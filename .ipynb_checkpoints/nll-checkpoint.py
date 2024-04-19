@@ -3,7 +3,6 @@ from ntk import get_kernel_and_jac_identity_cov
 from ntk import get_kernel_and_jac_lowdim_cov
 from jax import lax
 from jax import scipy
-
 import utils
 
 
