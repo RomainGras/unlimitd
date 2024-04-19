@@ -208,6 +208,7 @@ def batch_stats_updater(current_state, x_a):
         new_batch_stats = mutated_vars["batch_stats"]
         return new_batch_stats, None
 
-    batch_stats = dict(batch_stats) #unfreeze(batch_stats)
+    batch_stats = dict(batch_stats)
+    print(type(batch_stats))
     batch_stats, _ = lax.scan(f, batch_stats, x_a)
     return batch_stats
