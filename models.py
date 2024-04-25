@@ -99,3 +99,43 @@ def small_network(n_neurons, activation, reg_dim):
             return x
     
     return Regressor()
+
+
+def slightly_bigger_MLP(n_neurons, activation, reg_dim):
+    """
+    Returns a small neural network (two layers, n_neurons per layer with specified activation)
+    Use reg_dim to control the dimension of the output
+
+    Compatible activations: "relu" and "tanh" (note: all experiments run with ReLU).
+    """
+
+    if activation == "relu":
+        act_fn = nn.relu
+    elif activation == "tanh":
+        act_fn = nn.tanh
+
+    class Regressor(nn.Module):
+        @nn.compact
+        def __call__(self, x):
+            x = nn.Dense(n_neurons)(x)
+            x = act_fn(x)
+
+            x = nn.Dense(n_neurons)(x)
+            x = act_fn(x)
+
+            x = nn.Dense(n_neurons)(x)
+            x = act_fn(x)
+
+            x = nn.Dense(n_neurons)(x)
+            x = act_fn(x)
+
+            x = nn.Dense(n_neurons)(x)
+            x = act_fn(x)
+
+            x = nn.Dense(reg_dim)(x)
+
+            x = np.reshape(x, (-1, reg_dim))
+
+            return x
+    
+    return Regressor()
