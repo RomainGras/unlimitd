@@ -1,0 +1,50 @@
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+Namespace(seed=0, dataset='CUB', model='Conv4', method='maml', train_n_way=5, test_n_way=5, n_shot=5, train_aug=False, steps=2, tau=1.0, loss='ELBO', mean=0.0, kernel='bncossim', batch_size=1, diff_net=None, num_classes=200, save_freq=50, start_epoch=0, stop_epoch=-1, resume=False, warmup=False)
+[INFO] Setting SEED: None
+Traceback (most recent call last):
+  File "/home/gridsan/rgras/revisit-logistic-softmax/train.py", line 230, in <module>
+    model = model.to(device)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1145, in to
+    return self._apply(convert)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 797, in _apply
+    module._apply(fn)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 797, in _apply
+    module._apply(fn)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 797, in _apply
+    module._apply(fn)
+  [Previous line repeated 1 more time]
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 820, in _apply
+    param_applied = fn(param)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1143, in convert
+    return t.to(device, dtype if t.is_floating_point() or t.is_complex() else None, non_blocking)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/cuda/__init__.py", line 247, in _lazy_init
+    torch._C._cuda_init()
+RuntimeError: Found no NVIDIA driver on your system. Please check that you have an NVIDIA GPU and installed a driver from http://www.nvidia.com/Download/index.aspx
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[INFO] Setting SEED: None
+Traceback (most recent call last):
+  File "/home/gridsan/rgras/revisit-logistic-softmax/test.py", line 226, in <module>
+    main()
+  File "/home/gridsan/rgras/revisit-logistic-softmax/test.py", line 221, in main
+    accuracy_list.append(single_test(params))
+  File "/home/gridsan/rgras/revisit-logistic-softmax/test.py", line 110, in single_test
+    model = model.cuda()
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 905, in cuda
+    return self._apply(lambda t: t.cuda(device))
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 797, in _apply
+    module._apply(fn)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 797, in _apply
+    module._apply(fn)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 797, in _apply
+    module._apply(fn)
+  [Previous line repeated 1 more time]
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 820, in _apply
+    param_applied = fn(param)
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/nn/modules/module.py", line 905, in <lambda>
+    return self._apply(lambda t: t.cuda(device))
+  File "/state/partition1/llgrid/pkg/anaconda/anaconda3-2023a-pytorch/lib/python3.9/site-packages/torch/cuda/__init__.py", line 247, in _lazy_init
+    torch._C._cuda_init()
+RuntimeError: Found no NVIDIA driver on your system. Please check that you have an NVIDIA GPU and installed a driver from http://www.nvidia.com/Download/index.aspx

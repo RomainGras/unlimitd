@@ -1,0 +1,10 @@
+Time: 20240530-143520, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.14% +- 0.92% 
+Time: 20240530-143547, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.45% +- 0.94% 
+Time: 20240530-143614, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 66.38% +- 0.91% 
+Time: 20240530-143642, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.45% +- 0.90% 
+Time: 20240530-143707, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.36% +- 0.90% 
+Time: 20240530-143734, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.23% +- 0.94% 
+Time: 20240530-143801, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.47% +- 0.91% 
+Time: 20240530-143828, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.54% +- 0.92% 
+Time: 20240530-143854, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.02% +- 0.93% 
+Time: 20240530-143920, Setting: CUB-novel-Conv4-CDKT-aug 1shot 5way_train 5way_test, Acc: 600 Test Acc = 65.18% +- 0.90% 
