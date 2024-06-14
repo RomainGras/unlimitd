@@ -196,6 +196,8 @@ if __name__ == '__main__':
         elif(params.method == 'differentialCDKT'):
             if params.diff_net == "simple_netC_0hl":
                 diff_net = backbone.simple_netC_0hl()
+            else:
+                raise ValueError('Use one model from : simple_netC_0hl')
             model = differentialCDKT(model_dict[params.model], diff_net, **train_few_shot_params)
             model.init_summary()
         elif params.method == 'protonet':

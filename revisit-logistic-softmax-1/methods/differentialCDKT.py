@@ -178,6 +178,7 @@ class differentialCDKT(MetaTemplate):
             y_query = np.repeat(range(self.n_way), self.n_query)
             x_train = x_all
             y_train = y_all
+            print(x_train.shape, y_train.shape)
 
             self.model.train()
             self.feature_extractor.train()
