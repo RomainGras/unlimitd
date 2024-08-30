@@ -1,0 +1,31 @@
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+Conv4
+Conv4S
+Conv6
+Params : Namespace(seed=1, dataset='CUB', model='ResNet18', method='maml', train_n_way=5, test_n_way=5, n_shot=1, train_aug=True, steps=2, tau=1.0, loss='ELBO', mean=0.0, kernel='bncossim', batch_size=1, diff_net=None, split='novel', save_iter=-1, adaptation=False, repeat=5)
+[INFO] Setting SEED: 1
+Inner lr : 0.01
+One iteration : 42.25257754325867s
+600 Test Acc = 67.04% +- 1.00%
+[INFO] Setting SEED: 2
+Inner lr : 0.01
+One iteration : 41.76087498664856s
+600 Test Acc = 67.64% +- 1.01%
+[INFO] Setting SEED: 3
+Inner lr : 0.01
+One iteration : 42.272099018096924s
+600 Test Acc = 66.52% +- 1.02%
+[INFO] Setting SEED: 4
+Inner lr : 0.01
+One iteration : 42.02931833267212s
+600 Test Acc = 68.22% +- 1.01%
+[INFO] Setting SEED: 5
+Inner lr : 0.01
+One iteration : 42.84628772735596s
+600 Test Acc = 67.78% +- 1.02%
+-----------------------------
+Seeds = 5 | Overall Test Acc = 67.44% +- 0.59%
+-----------------------------

@@ -1,0 +1,75 @@
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+Conv4
+Conv4S
+Conv6
+Namespace(seed=1, dataset='CUB', model='ResNet10', method='maml', train_n_way=5, test_n_way=5, n_shot=1, train_aug=True, steps=2, tau=1.0, loss='ELBO', mean=0.0, kernel='bncossim', batch_size=1, diff_net=None, num_classes=200, save_freq=50, start_epoch=0, stop_epoch=-1, resume=False, warmup=False)
+[INFO] Setting SEED: 1
+n_query : 16
+Tot epochs: 2400
+Epoch 0 | Batch 0/100 | Loss 1.581807
+Epoch 0 | Batch 10/100 | Loss 1.679066
+Epoch 0 | Batch 20/100 | Loss 1.702029
+Epoch 0 | Batch 30/100 | Loss 1.763993
+Epoch 0 | Batch 40/100 | Loss 1.820291
+Epoch 0 | Batch 50/100 | Loss 1.849632
+Epoch 0 | Batch 60/100 | Loss 1.861320
+Epoch 0 | Batch 70/100 | Loss 1.859738
+Epoch 0 | Batch 80/100 | Loss 1.844987
+Epoch 0 | Batch 90/100 | Loss 1.838227
+One iteration : 7.51840353012085s
+100 Test Acc = 26.66% +- 1.18%
+--> Best model! save...
+Epoch 1 | Batch 0/100 | Loss 1.600977
+Epoch 1 | Batch 10/100 | Loss 1.726179
+Epoch 1 | Batch 20/100 | Loss 1.726162
+Epoch 1 | Batch 30/100 | Loss 1.720534
+Epoch 1 | Batch 40/100 | Loss 1.712531
+Epoch 1 | Batch 50/100 | Loss 1.704174
+Epoch 1 | Batch 60/100 | Loss 1.695154
+Epoch 1 | Batch 70/100 | Loss 1.687436
+Epoch 1 | Batch 80/100 | Loss 1.687466
+Epoch 1 | Batch 90/100 | Loss 1.685684
+Epoch 2 | Batch 0/100 | Loss 1.696676
+Epoch 2 | Batch 10/100 | Loss 1.696767
+Epoch 2 | Batch 20/100 | Loss 1.702508
+Epoch 2 | Batch 30/100 | Loss 1.713825
+Epoch 2 | Batch 40/100 | Loss 1.712030
+Epoch 2 | Batch 50/100 | Loss 1.698670
+Epoch 2 | Batch 60/100 | Loss 1.690058
+Epoch 2 | Batch 70/100 | Loss 1.679867
+Epoch 2 | Batch 80/100 | Loss 1.672640
+Epoch 2 | Batch 90/100 | Loss 1.673709
+Epoch 3 | Batch 0/100 | Loss 1.693184
+Epoch 3 | Batch 10/100 | Loss 1.626408
+Epoch 3 | Batch 20/100 | Loss 1.626332
+Epoch 3 | Batch 30/100 | Loss 1.620339
+Epoch 3 | Batch 40/100 | Loss 1.627490
+Epoch 3 | Batch 50/100 | Loss 1.620784
+Epoch 3 | Batch 60/100 | Loss 1.620957
+Epoch 3 | Batch 70/100 | Loss 1.617988
+Epoch 3 | Batch 80/100 | Loss 1.616496
+Epoch 3 | Batch 90/100 | Loss 1.620414
+Epoch 4 | Batch 0/100 | Loss 1.604365
+Epoch 4 | Batch 10/100 | Loss 1.603840
+Epoch 4 | Batch 20/100 | Loss 1.598902
+Epoch 4 | Batch 30/100 | Loss 1.603400
+Epoch 4 | Batch 40/100 | Loss 1.605381
+Epoch 4 | Batch 50/100 | Loss 1.605547
+Epoch 4 | Batch 60/100 | Loss 1.607634
+Epoch 4 | Batch 70/100 | Loss 1.609735
+Epoch 4 | Batch 80/100 | Loss 1.607367
+Epoch 4 | Batch 90/100 | Loss 1.605367
+Epoch 5 | Batch 0/100 | Loss 1.619255
+Epoch 5 | Batch 10/100 | Loss 1.600958
+Epoch 5 | Batch 20/100 | Loss 1.600848
+Epoch 5 | Batch 30/100 | Loss 1.599106
+Epoch 5 | Batch 40/100 | Loss 1.600364
+Epoch 5 | Batch 50/100 | Loss 1.593338
+Epoch 5 | Batch 60/100 | Loss 1.592879
+Epoch 5 | Batch 70/100 | Loss 1.596130
+Epoch 5 | Batch 80/100 | Loss 1.594029
+Epoch 5 | Batch 90/100 | Loss 1.592314

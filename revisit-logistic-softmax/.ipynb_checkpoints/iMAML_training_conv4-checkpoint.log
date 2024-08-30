@@ -1,0 +1,27 @@
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+[WARNING] install tensorboardX to record simulation logs.
+Conv4
+Conv4S
+Conv6
+Namespace(seed=1, dataset='CUB', model='Conv4', method='imaml', train_n_way=5, test_n_way=5, n_shot=1, train_aug=True, steps=2, tau=1.0, loss='ELBO', mean=0.0, kernel='bncossim', batch_size=1, diff_net=None, num_classes=200, save_freq=50, start_epoch=0, stop_epoch=-1, resume=False, warmup=False)
+[INFO] Setting SEED: 1
+n_query : 16
+Conv4
+Inner lr : 0.01
+Tot epochs: 2400
+Meta-lr : 0.001
+Epoch 0 | Batch 0/100 | Loss 1.919288
+Epoch 0 | Batch 10/100 | Loss 1.688709
+Epoch 0 | Batch 20/100 | Loss 1.832333
+Epoch 0 | Batch 30/100 | Loss 1.945163
+Epoch 0 | Batch 40/100 | Loss 2.139915
+Epoch 0 | Batch 50/100 | Loss 2.090949
+Epoch 0 | Batch 60/100 | Loss 2.071582
+Epoch 0 | Batch 70/100 | Loss 1.986609
+Epoch 0 | Batch 80/100 | Loss 1.803295
+Epoch 0 | Batch 90/100 | Loss 1.796452
+One iteration : 3.5897274017333984s
+100 Test Acc = 20.02% +- 0.99%

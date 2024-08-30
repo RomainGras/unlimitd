@@ -1,2 +1,6 @@
-revisit-logistic-softmax-1/filelists
-deep-kernel-transfer-1/filelists
+revisit-logistic-softmax/filelists/CUB/CUB_200_2011/images
+revisit-logistic-softmax/filelists/miniImagenet/miniImagenet
+revisit-logistic-softmax/filelists/omniglots/images       
+revisit-logistic-softmax/save/checkpoints
+deep-kernel-transfer/filelists/QMUL/images
+deep-kernel-transfer/save/checkpoints
