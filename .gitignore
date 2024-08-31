@@ -1,7 +1,4 @@
-revisit-logistic-softmax/filelists/CUB/CUB_200_2011
-revisit-logistic-softmax/filelists/CUB/base.json
-revisit-logistic-softmax/filelists/CUB/novel.json
-revisit-logistic-softmax/filelists/CUB/val.json
+revisit-logistic-softmax/filelists/CUB
 revisit-logistic-softmax/filelists/miniImagenet/miniImagenet
 revisit-logistic-softmax/filelists/miniImagenet/archive.zip
 revisit-logistic-softmax/filelists/miniImagenet/base.json
