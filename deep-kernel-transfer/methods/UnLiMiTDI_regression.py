@@ -13,11 +13,14 @@ import gpytorch
 from time import gmtime, strftime
 import random
 from statistics import mean
-from data.qmul_loader import get_batch, train_people, test_people
+# from data.qmul_loader import get_batch, train_people, test_people
 from configs import kernel_type
 
+import copy
+import torch.optim as optim
+
 class UnLiMiTDI(nn.Module):
-    def __init__(self, conv_net, diff_net, subspace_dim=1):
+    def __init__(self, conv_net, diff_net, subspace_dim=1, sigma=1):
         super(UnLiMiTDI, self).__init__()
         self.subspace_dim = subspace_dim # Only Useful if using Unlimitdproj afterwards ; used to create dummy scaling parameters for UNLIMITD-F
         if conv_net is None:
@@ -29,14 +32,14 @@ class UnLiMiTDI(nn.Module):
             self.feature_extractor = conv_net
             self.diff_net = diff_net  #Differentiable network
             self.is_conv_diff = True
-        self.get_model_likelihood_mll() #Init model, likelihood, and mll
+        self.get_model_likelihood_mll(sigma=sigma) #Init model, likelihood, and mll
 
-    def get_model_likelihood_mll(self, train_x=None, train_y=None):
-        if(train_x is None): train_x=torch.ones(19, 30000).cuda()
+    def get_model_likelihood_mll(self, train_x=None, train_y=None, sigma=1):
+        if(train_x is None): train_x=torch.ones(19, 30000).cuda()  # QMUL (19, 30000), berkeley (30, 11), argus (100, 3)
         if(train_y is None): train_y=torch.ones(19).cuda()
-
+    
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
-        model = ExactGPLayer(train_x=train_x, train_y=train_y, likelihood=likelihood, diff_net = self.diff_net, subspace_dim=self.subspace_dim, kernel=kernel_type)
+        model = ExactGPLayer(train_x=train_x, train_y=train_y, likelihood=likelihood, diff_net = self.diff_net, subspace_dim=self.subspace_dim, kernel=kernel_type, sigma=sigma)
 
         self.model      = model.cuda()
         self.likelihood = likelihood.cuda()
@@ -51,9 +54,8 @@ class UnLiMiTDI(nn.Module):
     def set_forward_loss(self, x):
         pass
 
-    def train_loop(self, epoch, optimizer):
-        batch, batch_labels = get_batch(train_people)
-        batch, batch_labels = batch.cuda(), batch_labels.cuda()
+    def train_loop(self, epoch, provider, optimizer):
+        batch, batch_labels = provider.get_train_batch()
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
 
@@ -76,20 +78,11 @@ class UnLiMiTDI(nn.Module):
                     self.model.likelihood.noise.item()
                 ))
 
-    def test_loop(self, n_support, optimizer=None): # no optimizer needed for GP
-        inputs, targets = get_batch(test_people)
-
-        support_ind = list(np.random.choice(list(range(19)), replace=False, size=n_support))
-        query_ind   = [i for i in range(19) if i not in support_ind]
-
-        x_all = inputs.cuda()
-        y_all = targets.cuda()
-
-        x_support = inputs[:,support_ind,:,:,:].cuda()
-        y_support = targets[:,support_ind].cuda()
+    def test_loop(self, n_support, provider, optimizer=None): # no optimizer needed for GP
+        (x_support, y_support), (x_query, y_query) = provider.get_test_batch()
 
         # choose a random test person
-        n = np.random.randint(0, len(test_people)-1)
+        n = np.random.randint(0, x_support.size(0)-1)
     
         x_conv_support = self.feature_extractor(x_support[n]).detach()
         x_conv_support_flat = x_conv_support.view(x_conv_support.size(0), -1) # Erase when not differentiating the whole network
@@ -101,15 +94,56 @@ class UnLiMiTDI(nn.Module):
         self.likelihood.eval()
 
         with torch.no_grad():
-            x_conv_query = self.feature_extractor(x_all[n]).detach()
+            x_conv_query = self.feature_extractor(x_query[n]).detach()
             x_conv_query_flat = x_conv_query.view(x_conv_query.size(0), -1)
             pred    = self.likelihood(self.model(x_conv_query_flat))
             lower, upper = pred.confidence_region() #2 standard deviations above and below the mean
             lower += self.diff_net(x_conv_query).reshape(-1)
             upper += self.diff_net(x_conv_query).reshape(-1)
-        mse = self.mse(pred.mean + self.diff_net(self.feature_extractor(x_all[n])).reshape(-1), y_all[n])
+        mse = self.mse(pred.mean + self.diff_net(self.feature_extractor(x_query[n])).reshape(-1), y_query[n])
 
         return mse
+
+        
+    def test_loop_ft(self, n_support, task_update_num, ft_net, provider, optimizer=None, print_every=None): # no optimizer needed for GP
+        n_ft = task_update_num
+        mse_per_step=[]
+        
+        (x_support, y_support), (x_query, y_query) = provider.get_test_batch()
+
+        # choose a random test person
+        n = np.random.randint(0, x_support.size(0)-1)
+    
+        x_conv_support = self.feature_extractor(x_support[n]).detach()
+
+        # Create a new model instance and load the original model's state
+        ft_net.load_state_dict(copy.deepcopy(self.diff_net.state_dict()))  # Deep copy the original model's weights
+
+        # Fine-tuning loop
+        print(f"Beggining adaptation with n_support {x_support.size(0)}")
+        optimizer = optim.Adam(ft_net.parameters(), lr=1e-2)
+        # Fine tuning
+        for i in range(n_ft):
+            train_logit = ft_net(x_conv_support).reshape(-1)
+            inner_loss = self.mse(train_logit, y_support[n])
+            inner_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            with torch.no_grad():
+                if print_every is not None and i%print_every==0:
+                    pred = ft_net(x_query[n]).reshape(-1)
+                    mse = self.mse(pred, y_query[n])
+                    mse_per_step.append(mse)
+
+        #Evaluation on all data (weird)
+        pred = ft_net(x_query[n]).reshape(-1)
+        mse = self.mse(pred, y_query[n])
+        mse_per_step.append(mse)
+        if print_every is None:
+            return mse
+        else:
+            return mse_per_step
+        
 
     def save_checkpoint(self, checkpoint):
         # save state
@@ -136,12 +170,12 @@ class UnLiMiTDI(nn.Module):
 ###################
         
 class NTKernel(gpytorch.kernels.Kernel):
-    def __init__(self, net, subspace_dim=1, **kwargs):
+    def __init__(self, net, subspace_dim=1, sigma=1, **kwargs):
         super(NTKernel, self).__init__(has_lengthscale=False, **kwargs)
         self.net = net
+        self.sigma=sigma
         
         # Dummy things that are going to be copied if using unlimitdproj afterwards
-        self.sigma = 1
         self.scaling_param = nn.Parameter(torch.ones(subspace_dim, 1), requires_grad=False)
 
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
@@ -228,17 +262,17 @@ class CosSimNTKernel(gpytorch.kernels.Kernel):
 #GP
 ###################    
 class ExactGPLayer(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, likelihood, diff_net, subspace_dim=1, kernel='NTK'):
+    def __init__(self, train_x, train_y, likelihood, diff_net, subspace_dim=1, kernel='NTK', sigma=1):
         super(ExactGPLayer, self).__init__(train_x, train_y, likelihood)
         self.mean_module  = gpytorch.means.ConstantMean()
 
         ## NTKernel
         if(kernel=='NTK'):
-            self.covar_module = NTKernel(diff_net, subspace_dim=subspace_dim)
+            self.covar_module = NTKernel(diff_net, subspace_dim=subspace_dim, sigma=sigma)
         elif(kernel=='NTKcossim'):
             self.covar_module = CosSimNTKernel(diff_net)        
         else:
-            raise ValueError("[ERROR] the kernel '" + str(kernel) + "' is not supported for regression, use 'rbf' or 'spectral'.")
+            raise ValueError("[ERROR] the kernel '" + str(kernel) + "' is not supported for regression, use 'NTK' or 'NTKcossim'.")
 
     def forward(self, x):
         mean_x  = self.mean_module(x)

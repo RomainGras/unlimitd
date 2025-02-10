@@ -10,9 +10,13 @@ from methods.meta_template import MetaTemplate
 
 ## Our packages
 import gpytorch
+import time
 from time import gmtime, strftime
 import random
 from configs import kernel_type, autodiff
+
+import copy
+import torch.optim as optim
 #Check if tensorboardx is installed
 try:
     from tensorboardX import SummaryWriter
@@ -40,12 +44,11 @@ class differentialDKT(MetaTemplate):
         self.iteration = 0
         self.writer=None
         self.feature_extractor = self.feature
-        if type(diff_net)==backbone.CombinedNetwork:  #Transfering the net directly because simpler
-            self.diff_net = diff_net
-            dummy_z = torch.randn(1,3,84,84)
-        else:
-            self.diff_net = diff_net()
-            dummy_z = torch.randn(1, 1600)  #Conv4 dummy_z
+        self.diff_net = diff_net()
+        dummy_z = torch.randn(1,3,84,84)
+        # else:
+        #     self.diff_net = diff_net()
+        #     dummy_z = torch.randn(1, 1600)  #Conv4 dummy_z
         self.get_model_likelihood_mll() #Init model, likelihood, and mll
         if(kernel_type=="cossim"):
             self.normalize=True
@@ -55,6 +58,8 @@ class differentialDKT(MetaTemplate):
             self.feature_extractor.trunk.add_module("bn_out", nn.BatchNorm1d(latent_size))
         else:
             self.normalize=False
+        
+        print(f"Normalization : {self.normalize}")
 
     def init_summary(self):
         if(IS_TBX_INSTALLED):
@@ -162,11 +167,12 @@ class differentialDKT(MetaTemplate):
         return sorted_z_batch.cuda(), transformations # z_batch, {k: v for k, v in zip(keys, values)} 
     
     
-    def train_loop(self, epoch, train_loader, optimizer, print_freq=10):
+    def train_loop(self, epoch, train_loader, optimizer, print_freq=33):
         # optimizer = torch.optim.Adam([{'params': self.model.parameters(), 'lr': 1e-4},
         #                               {'params': self.feature_extractor.parameters(), 'lr': 1e-3}])
 
         for i, (x,_) in enumerate(train_loader):
+            # starting_time = time.time()
             self.n_query = x.size(1) - self.n_support
             if self.change_way: self.n_way  = x.size(0)
             x_all = x.contiguous().view(self.n_way * (self.n_support + self.n_query), *x.size()[2:]).cuda()
@@ -207,9 +213,9 @@ class differentialDKT(MetaTemplate):
             noise = 0.0
             outputscale = 0.0
             for idx, single_model in enumerate(self.model.models):
-                #print(f"target_list[idx] : {target_list[idx].shape}") [85]
-                #print(f"self.diff_net(z_train) : {self.diff_net(z_train).shape}")  [85,5]
-                single_model.set_train_data(inputs=z_train, targets=target_list[idx]-self.diff_net(z_train)[:, idx], strict=False)
+                #print(f"target_list[idx] : {target_list[idx].shape}") # [85]
+                #print(f"self.diff_net(z_train) : {self.diff_net(z_train).shape}")  # [85,5]
+                single_model.set_train_data(inputs=z_train.reshape(z_train.size(0), -1), targets=target_list[idx]-self.diff_net(z_train)[:, idx], strict=False)
                 if hasattr(single_model.covar_module, 'lengthscale') and (single_model.covar_module.lengthscale is not None): #Originally if(single_model.covar_module.base_kernel.lengthscale is not None):
                     lenghtscale+=single_model.covar_module.lengthscale.mean().cpu().detach().numpy().squeeze()
                 noise+=single_model.likelihood.noise.cpu().detach().numpy().squeeze()
@@ -233,46 +239,49 @@ class differentialDKT(MetaTemplate):
             self.iteration = i+(epoch*len(train_loader))
             if(self.writer is not None): self.writer.add_scalar('loss', loss, self.iteration)
 
-            #Eval on the query (validation set)
-            with torch.no_grad():
-                self.model.eval()
-                self.likelihood.eval()
-                self.feature_extractor.eval()
-                z_support = self.feature_extractor.forward(x_support).detach()
-                if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
-                z_support_list = [z_support]*5 #originally [z_support]*len(y_support)
-                #print(f"self.model : {self.model}")
-                #print(f"z_support shape : {z_support.shape}")
-                #print(f"y_support length : {len(y_support)}")
-                #print(f"z_support_list length : {len(z_support_list)}")
-                #print(f"Length of z_support_list: {len(z_support_list)}")  # Should be 5 to match the number of models
-                #for i, tensor in enumerate(z_support_list):
-                #    print(f"Shape of z_support_list[{i}]: {tensor.shape}")
-                #print(f"self.model(*z_support_list) : {len(self.model(*z_support_list))}")
-                
-                predictions = self.likelihood(*self.model(*z_support_list)) #return 20 MultiGaussian Distributions
-                predictions_list = list()
-                for c, gaussian in enumerate(predictions):
-                    predictions_list.append(torch.sigmoid(gaussian.mean+self.diff_net(z_support)[:,c]).cpu().detach().numpy())
-                y_pred = np.vstack(predictions_list).argmax(axis=0) #[model, classes]
-                accuracy_support = (np.sum(y_pred==y_support) / float(len(y_support))) * 100.0
-                if(self.writer is not None): self.writer.add_scalar('GP_support_accuracy', accuracy_support, self.iteration)
-                z_query = self.feature_extractor.forward(x_query).detach()
-                if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
-                z_query_list = [z_query]*5 # Originally [z_query]*len(y_query)
-                predictions = self.likelihood(*self.model(*z_query_list)) #return 20 MultiGaussian Distributions
-                predictions_list = list()
-                for c, gaussian in enumerate(predictions):
-                    predictions_list.append(torch.sigmoid(gaussian.mean+self.diff_net(z_query)[:,c]).cpu().detach().numpy())
-                y_pred = np.vstack(predictions_list).argmax(axis=0) #[model, classes]
-                accuracy_query = (np.sum(y_pred==y_query) / float(len(y_query))) * 100.0
-                if(self.writer is not None): self.writer.add_scalar('GP_query_accuracy', accuracy_query, self.iteration)
-
             if i % print_freq==0:
+                
+                #Eval on the query (validation set)
+                with torch.no_grad():
+                    self.model.eval()
+                    self.likelihood.eval()
+                    self.feature_extractor.eval()
+                    z_support = self.feature_extractor.forward(x_support).detach()
+                    if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
+                    z_support_list = [z_support]*5 #originally [z_support]*len(y_support)
+                    #print(f"self.model : {self.model}")
+                    #print(f"z_support shape : {z_support.shape}")
+                    #print(f"y_support length : {len(y_support)}")
+                    #print(f"z_support_list length : {len(z_support_list)}")
+                    #print(f"Length of z_support_list: {len(z_support_list)}")  # Should be 5 to match the number of models
+                    #for i, tensor in enumerate(z_support_list):
+                    #    print(f"Shape of z_support_list[{i}]: {tensor.shape}")
+                    #print(f"self.model(*z_support_list) : {len(self.model(*z_support_list))}")
+
+                    predictions = self.likelihood(*self.model(*[z_support.reshape(z_support.size(0), -1) for z_support in z_support_list])) #return 20 MultiGaussian Distributions
+                    predictions_list = list()
+                    for c, gaussian in enumerate(predictions):
+                        predictions_list.append(torch.sigmoid(gaussian.mean+self.diff_net(z_support)[:,c]).cpu().detach().numpy())
+                    y_pred = np.vstack(predictions_list).argmax(axis=0) #[model, classes]
+                    accuracy_support = (np.sum(y_pred==y_support) / float(len(y_support))) * 100.0
+                    if(self.writer is not None): self.writer.add_scalar('GP_support_accuracy', accuracy_support, self.iteration)
+                    z_query = self.feature_extractor.forward(x_query).detach()
+                    if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
+                    z_query_list = [z_query]*5 # Originally [z_query]*len(y_query)
+                    predictions = self.likelihood(*self.model(*[z_query.reshape(z_query.size(0), -1) for z_query in z_query_list])) #return 20 MultiGaussian Distributions
+                    predictions_list = list()
+                    for c, gaussian in enumerate(predictions):
+                        predictions_list.append(torch.sigmoid(gaussian.mean+self.diff_net(z_query)[:,c]).cpu().detach().numpy())
+                    y_pred = np.vstack(predictions_list).argmax(axis=0) #[model, classes]
+                    accuracy_query = (np.sum(y_pred==y_query) / float(len(y_query))) * 100.0
+                    if(self.writer is not None): self.writer.add_scalar('GP_query_accuracy', accuracy_query, self.iteration)
+                    
                 if(self.writer is not None): self.writer.add_histogram('z_support', z_support, self.iteration)
                 mean_vec_avg = torch.mean(self.diff_net(z_train).detach(), dim=0)
                 mean_vec_avg_str = ", ".join("{:.6f}".format(avg) for avg in mean_vec_avg)
                 print('Epoch [{:d}] [{:d}/{:d}] | Outscale {:f} | Mean functions {} | Noise {:f} | Loss {:f} | Supp. {:f} | Query {:f}'.format(epoch, i, len(train_loader), outputscale, mean_vec_avg_str, noise, loss.item(), accuracy_support, accuracy_query))
+            
+            # print(f"{i} iteration : {(time.time()-starting_time)}s")
 
     def correct(self, x, N=0, laplace=False):
         ##Dividing input x in query and support set
@@ -322,7 +331,7 @@ class differentialDKT(MetaTemplate):
             
         train_list = [z_train]*self.n_way
         for idx, single_model in enumerate(self.model.models):
-            single_model.set_train_data(inputs=z_train, targets=target_list[idx]-self.diff_net(z_train)[:,idx], strict=False)
+            single_model.set_train_data(inputs=z_train.reshape(z_train.size(0), -1), targets=target_list[idx]-self.diff_net(z_train)[:,idx], strict=False)
 
         optimizer = torch.optim.Adam([{'params': self.model.parameters()}], lr=1e-3)
 
@@ -352,8 +361,11 @@ class differentialDKT(MetaTemplate):
             #for (rd_class, rd_elemt) in transformations.items():
             #    z_query[self.n_query*rd_class:self.n_query*(rd_class+1)] = sorted_z_query[self.n_query*rd_elemt:self.n_query*(rd_elemt+1)]
                 
-            z_query_list = [z_query]*5 # Originally [z_query]*len(y_query)
-            predictions = self.likelihood(*self.model(*z_query_list)) #return n_way MultiGaussians
+            z_query_list = [z_query.reshape(z_query.size(0), -1)]*5 # Originally [z_query]*len(y_query)
+            # print(z_query_list[0].reshape(z_query_list[0].size(0), -1).shape)
+            # print(self.model(*z_query_list))
+            
+            predictions = self.likelihood(*self.model(*[z_query.reshape(z_query.size(0), -1) for z_query in z_query_list])) #return n_way MultiGaussians
             predictions_list = list()
             # Getting the sigmoid of each binary classifier, and the max is the prediction
             for c, gaussian in enumerate(predictions):
@@ -363,7 +375,48 @@ class differentialDKT(MetaTemplate):
             count_this = len(y_query)
         return float(top1_correct), count_this, avg_loss/float(N+1e-10)
 
-    def test_loop(self, test_loader, record=None, return_std=False):
+    
+    def optim_correct(self, x, n_ft, lr):
+        ##Dividing input x in query and support set
+        x_support = x[:,:self.n_support,:,:,:].contiguous().view(self.n_way * (self.n_support), *x.size()[2:]).cuda()
+        y_support = torch.from_numpy(np.repeat(range(self.n_way), self.n_support)).cuda()
+        x_query = x[:,self.n_support:,:,:,:].contiguous().view(self.n_way * (self.n_query), *x.size()[2:]).cuda()
+        y_query = np.repeat(range(self.n_way), self.n_query)
+
+        x_train = x_support
+        y_train = y_support
+        
+        ft_feature_extr = copy.deepcopy(self.feature_extractor).cuda()
+        ft_diff_net = copy.deepcopy(self.diff_net).cuda()
+        
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam([# {'params':ft_feature_extr.parameters(), 'lr':lr},
+                               {'params':ft_diff_net.parameters(), 'lr':lr}])
+        optimizer.zero_grad()
+        # Fine tuning
+        for _ in range(n_ft):
+            z_train = ft_feature_extr(x_train)
+            if(self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
+            train_logit = ft_diff_net(z_train)
+            loss = criterion(train_logit, y_train)
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            
+        with torch.no_grad(), gpytorch.settings.num_likelihood_samples(32):
+            ft_feature_extr.eval()
+            ft_diff_net.eval()
+            
+            z_query = ft_feature_extr(x_query)
+            if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
+            output_query = ft_diff_net(z_query)
+            
+            _, y_pred = torch.max(output_query, 1)
+            top1_correct = np.sum(y_pred.detach().cpu().numpy() == y_query)
+            count_this = len(y_query)
+        return float(top1_correct), count_this, 0
+    
+    def test_loop(self, test_loader, optim_based=False, n_ft=0, lr=0, record=None, return_std=False):
         print_freq = 10
         correct =0
         count = 0
@@ -373,7 +426,11 @@ class differentialDKT(MetaTemplate):
             self.n_query = x.size(1) - self.n_support
             if self.change_way:
                 self.n_way  = x.size(0)
-            correct_this, count_this, loss_value = self.correct(x)
+            
+            if optim_based:
+                correct_this, count_this, loss_value = self.optim_correct(x, n_ft, lr)
+            else:
+                correct_this, count_this, loss_value = self.correct(x)
             acc_all.append(correct_this/ count_this*100)
             if(i % 100==0):
                 acc_mean = np.mean(np.asarray(acc_all))
@@ -384,7 +441,8 @@ class differentialDKT(MetaTemplate):
         print('%d Test Acc = %4.2f%% +- %4.2f%%' %(iter_num,  acc_mean, 1.96* acc_std/np.sqrt(iter_num)))
         if(self.writer is not None): self.writer.add_scalar('test_accuracy', acc_mean, self.iteration)
         if(return_std): return acc_mean, acc_std
-        else: return acc_mean
+        else: return acc_mean    
+    
 
     def get_logits(self, x):
         self.n_query = x.size(1) - self.n_support
@@ -434,8 +492,8 @@ class NTKernel(gpytorch.kernels.Kernel):
         self.normalize = normalize
 
     def forward(self, x1, x2, diag=False, **params):
-        #x1 = x1.reshape(x1.size(0), 3, 84, 84)
-        #x2 = x2.reshape(x2.size(0), 3, 84, 84)
+        x1 = x1.reshape(x1.size(0), 3, 84, 84)
+        x2 = x2.reshape(x2.size(0), 3, 84, 84)
         if autodiff:
             jac1T = self.compute_jacobian_autodiff(x1).T
             jac2T = self.compute_jacobian_autodiff(x2).T if x1 is not x2 else jac1T

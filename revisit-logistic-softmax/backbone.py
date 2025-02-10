@@ -112,7 +112,7 @@ class ConvBlock(nn.Module):
             self.C      = Conv2d_fw(indim, outdim, 3, padding = padding)
             self.BN     = BatchNorm2d_fw(outdim)
         else:
-            self.C      = nn.Conv2d(indim, outdim, 3, stride = 1, padding = padding, bias = False)
+            self.C      = nn.Conv2d(indim, outdim, 3, stride = 1, padding = padding, bias = False) # /!\ IN MAML VERSION, BIAS = TRUE
             self.BN     = nn.BatchNorm2d(outdim)
         self.relu   = nn.ReLU(inplace=True)
 
@@ -280,40 +280,6 @@ class ConvNetNopool(nn.Module): #Relation net use a 4 layer conv with pooling in
 
         self.trunk = nn.Sequential(*trunk)
         self.final_feat_dim = [64,19,19]
-
-    def forward(self,x):
-        out = self.trunk(x)
-        return out
-
-    
-class Conv4Net(nn.Module):
-    def __init__(self, flatten = True):
-        super(Conv4Net,self).__init__()
-        trunk = []
-        for i in range(4):
-            indim = 3 if i == 0 else 64
-            outdim = 64
-            pool = ( i <4 )
-            padding = 1
-            C      = nn.Conv2d(indim, outdim, 3, stride = 1, padding = padding, bias = False)
-            BN     = nn.BatchNorm2d(outdim, track_running_stats=False)
-            relu   = nn.ReLU(inplace=True)
-
-            trunk.append(C)
-            trunk.append(BN)
-            trunk.append(relu)
-            if pool:
-                pool   = nn.MaxPool2d(2)  # Originally : self.pool = nn.MaxPool2d(2)
-                trunk.append(pool)
-
-        for layer in trunk:
-            init_layer(layer)
-
-        if flatten:
-            trunk.append(Flatten())
-
-        self.trunk = nn.Sequential(*trunk)
-        self.final_feat_dim = 1600
 
     def forward(self,x):
         out = self.trunk(x)

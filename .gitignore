@@ -10,6 +10,9 @@ revisit-logistic-softmax/filelists/omniglots/novel.json
 revisit-logistic-softmax/filelists/omniglots/val.json
 revisit-logistic-softmax/filelists/omniglots/noLatin.json  
 revisit-logistic-softmax/save/checkpoints
+revisit-logistic-softmax/save/saved_checkpoints
 deep-kernel-transfer/filelists/QMUL/images
 deep-kernel-transfer/filelists/QMUL/QMUL_360degreeViewSphere_FaceDatabase
 deep-kernel-transfer/save/checkpoints
+deep-kernel-transfer/filelists/argus_data/meta_data_argus_sim.json
+deep-kernel-transfer/filelists/berkeley_data.mat

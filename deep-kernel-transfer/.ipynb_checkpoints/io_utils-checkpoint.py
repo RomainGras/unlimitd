@@ -51,9 +51,10 @@ def parse_args_regression(script):
         parser.add_argument('--seed' , default=0, type=int,  help='Seed for Numpy and pyTorch. Default: 0 (None)')
         parser.add_argument('--model'       , default='Conv3',   help='model: Conv{3} / MLP{2}')
         parser.add_argument('--method'      , default='DKT',   help='DKT / transfer')
-        parser.add_argument('--dataset'     , default='QMUL',    help='QMUL / sines')
+        parser.add_argument('--dataset'     , default='QMUL',    help='QMUL / sines / argus / berkeley')
         parser.add_argument('--spectral', action='store_true', help='Use a spectral covariance kernel function')
         parser.add_argument('--subspacedim'     , default=100,  type=int,    help='Dimension of subspace projection for UNLIMITD-F/R')
+        parser.add_argument('--conv_net_not_differentiated' , action='store_true', help='For ours with QMUL. If True, only uses the gradient of the linear layer after the Conv3 network to perform ours bayesian updates. If False, differentiate the whole network, with Conv3')
 
         if script == 'train_regression':
             parser.add_argument('--start_epoch' , default=0, type=int,help ='Starting epoch')
@@ -61,7 +62,15 @@ def parse_args_regression(script):
             parser.add_argument('--resume'      , action='store_true', help='continue from previous trained model with largest epoch')
         elif script == 'test_regression':
             parser.add_argument('--n_support', default=5, type=int, help='Number of points on trajectory to be given as support points')
+            parser.add_argument('--n_test_epochs', default=30, type=int, help='How many test people?')
+            parser.add_argument('--ft', action='store_true', help='Fine-tuning adaptation for oursIX or oursI')
+            parser.add_argument('--task_update_num', default=10, type=int, help='For MAML, number of fine-tuning steps')
+        elif script == 'test_sigma_regression':
+            parser.add_argument('--stop_epoch'  , default=100, type=int, help ='Stopping epoch') #for meta-learning methods, each epoch contains 100 episodes. The default epoch number is dataset dependent. See train.py
+            parser.add_argument('--n_support', default=5, type=int, help='Number of points on trajectory to be given as support points')
             parser.add_argument('--n_test_epochs', default=10, type=int, help='How many test people?')
+            parser.add_argument('--ft', action='store_true', help='Fine-tuning adaptation for oursIX or oursI')
+
         return parser.parse_args()
 
 def get_assigned_file(checkpoint_dir,num):

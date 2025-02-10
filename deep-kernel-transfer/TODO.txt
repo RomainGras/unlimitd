@@ -1,0 +1,6 @@
+Incorporate QMUL loader in provide data from new datasets. 
+    get_batch almost done, need to convert meta_train_data to tensor pytorch instead of tuple of np array
+iMAML in sinusoids setting
+    
+ours iMAML in sinusoids setting
+    

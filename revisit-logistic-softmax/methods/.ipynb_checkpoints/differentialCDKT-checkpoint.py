@@ -71,15 +71,15 @@ class differentialCDKT(MetaTemplate):
         self.mu_q = []
         self.sigma_q = []
         
-        # if(kernel_type=="cossim"):
-        #     self.normalize=True
-        # elif(kernel_type=="bncossim"):
-        #     self.normalize=True
-        #     latent_size = np.prod(self.feature_extractor.final_feat_dim)
-        #     self.feature_extractor.trunk.add_module("bn_out", nn.BatchNorm1d(latent_size))
-        # else:
-        #     # self.normalize=False
-        #     pass
+        if(kernel_type=="cossim"):
+            self.normalize=True
+        elif(kernel_type=="bncossim"):
+            self.normalize=True
+            latent_size = np.prod(self.feature_extractor.final_feat_dim)
+            self.feature_extractor.trunk.add_module("bn_out", nn.BatchNorm1d(latent_size))
+        else:
+            # self.normalize=False
+            pass
     
     def get_steps(self, steps):
         if steps == -1:

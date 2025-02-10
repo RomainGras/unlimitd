@@ -24,6 +24,9 @@ from methods.relationnet import RelationNet
 from methods.maml import MAML
 from methods.differentialCDKT import differentialCDKT
 from methods.differentialDKT import differentialDKT
+from methods.differentialDKTIXnogpytorch import differentialDKTIXnogpy
+from methods.differentialDKTnogpytorch import differentialDKTnogpy
+from methods.differentialDKTIX import differentialDKTIX
 from io_utils import model_dict, get_resume_file, parse_args, get_best_file , get_assigned_file
 
 
@@ -71,8 +74,11 @@ def single_test(params):
     few_shot_params = dict(n_way = params.test_n_way , n_support = params.n_shot) 
 
     if params.dataset in ['omniglot', 'cross_char']:
-        assert params.model == 'Conv4' and not params.train_aug ,'omniglot only support Conv4 without augmentation'
-        params.model = 'Conv4S'
+        print(f"Model : {params.model}")
+        print(f"Diff net : {params.diff_net}")
+        print(f"Train aug : {params.train_aug}")
+        assert ('Conv4S' in params.model or 'Conv4S' in params.diff_net) and not params.train_aug, 'omniglot only support Conv4S without augmentation'
+        # params.model = 'Conv4S'   #Change of model for a Conv4S
 
     if params.method == 'baseline':
         model           = BaselineFinetune( model_dict[params.model], **few_shot_params )
@@ -88,6 +94,19 @@ def single_test(params):
         model           = differentialCDKT(model_dict[params.model], model_dict[params.diff_net], **few_shot_params)
     elif params.method == 'differentialDKT':
         model           = differentialDKT(model_dict[params.model], model_dict[params.diff_net], **few_shot_params)
+    elif params.method == 'differentialDKTIX':
+        model           = differentialDKTIX(model_dict[params.model], model_dict[params.diff_net], **few_shot_params)
+        print("scaling params")
+        print({k: torch.norm(v, p=2).item()/np.sqrt(v.numel()) for k, v in model.scaling_params.items()})
+        print({k: torch.min(v) for k, v in model.scaling_params.items()})
+        
+    elif(params.method == 'differentialDKTIXnogpy'):
+        model           = differentialDKTIXnogpy(model_dict[params.model], **few_shot_params)
+        
+    elif(params.method == 'differentialDKTnogpy'):
+        # print(type(model_dict[params.diff_net]))
+        model           = differentialDKTnogpy(model_dict[params.model], model_dict[params.diff_net], **few_shot_params)
+
     elif params.method == 'matchingnet':
         model           = MatchingNet( model_dict[params.model], **few_shot_params )
     elif params.method in ['relationnet', 'relationnet_softmax']:
@@ -117,6 +136,9 @@ def single_test(params):
     model = model.cuda()
 
     checkpoint_dir = '%s/checkpoints/%s/%s_%s' %(configs.save_dir, params.dataset, params.model, params.method)
+    
+    if 'differential' in params.method:
+        checkpoint_dir += f'_{params.diff_net}'
     if params.train_aug:
         checkpoint_dir += '_aug'
     if not params.method in ['baseline', 'baseline++'] :
@@ -154,28 +176,36 @@ def single_test(params):
         if params.save_iter != -1:
             modelfile   = get_assigned_file(checkpoint_dir,params.save_iter)
         else:
+            print(checkpoint_dir)
             modelfile   = get_best_file(checkpoint_dir)
         if modelfile is not None:
             tmp = torch.load(modelfile)
+            # tmp_test = torch.load("./save/checkpoints/CUB/identity_differentialDKTIX_aug_5way_1shot/test.tar")
+            # print(any(['scaling_params' in str for str in tmp_test['state'].keys()]))
+            if params.method in ['differentialDKTIX', 'differentialDKTIXnogpy']:
+                model.scaling_params = tmp['sp']
+                
+                print("scaling params")
+                print({k: torch.norm(v, p=2).item()/np.sqrt(v.numel()) for k, v in model.scaling_params.items()})
+                print({k: torch.min(v) for k, v in model.scaling_params.items()})
             model.load_state_dict(tmp['state'])
         else:
             print("[WARNING] Cannot find 'best_file.tar' in: " + str(checkpoint_dir))
     
-
     split = params.split
     if params.save_iter != -1:
         split_str = split + "_" +str(params.save_iter)
     else:
         split_str = split
 
-    if params.method in ['maml', 'maml_approx', 'DKT', 'CDKT', 'differentialCDKT', 'differentialDKT']: #maml do not support testing with feature
-        if 'Conv' in params.model:
+    if params.method in ['maml', 'maml_approx', 'DKT', 'CDKT', 'differentialCDKT', 'differentialDKT', 'differentialDKTIX', 'differentialDKTIXnogpy', 'differentialDKTnogpy']: #maml do not support testing with feature
+        if 'Conv' in params.model or (params.diff_net and 'Conv' in params.diff_net):
             if params.dataset in ['omniglot', 'cross_char']:
                 image_size = 28
             else:
                 image_size = 84 
         else:
-            image_size = 84 #Originally 224
+            image_size = 224
 
         datamgr         = SetDataManager(image_size, n_eposide = iter_num, n_query = 15 , **few_shot_params)
         
@@ -196,7 +226,12 @@ def single_test(params):
         if params.adaptation:
             model.task_update_num = 100 #We perform adaptation on MAML simply by updating more times.
         model.eval()
-        acc_mean, acc_std = model.test_loop( novel_loader, return_std = True, jac_test=False)
+        
+        if params.method in ['differentialDKT', 'differentialDKTIX', 'differentialDKTIXnogpy', 'differentialDKTnogpy'] and params.optim_based_test:
+            acc_mean, acc_std = model.test_loop( novel_loader, optim_based=True, n_ft=params.n_ft, lr=params.lr, temp=params.temp, return_std = True) #, jac_test=False
+        else:
+            acc_mean, acc_std = model.test_loop( novel_loader, return_std = True) #, jac_test=False
+            
 
     else:
         novel_file = os.path.join( checkpoint_dir.replace("checkpoints","features"), split_str +".hdf5") #defaut split = novel, but you can also test base or val classes

@@ -2,11 +2,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import configs
-from data.qmul_loader import get_batch, train_people, test_people
+
+# from data.qmul_loader import get_batch, train_people, test_people
+from data.regression_data_loader import data_provider
+
 from io_utils import parse_args_regression, get_resume_file
 from methods.DKT_regression import DKT
 from methods.feature_transfer_regression import FeatureTransfer
-from methods.UnLiMiTDI_regression import UnLiMiTDI
 from methods.UnLiMiTDR_regression import UnLiMiTDR
 from methods.UnLiMiTDproj_regression import UnLiMiTDproj
 from methods.UnLiMiTDIX_regression import UnLiMiTDIX
@@ -28,32 +30,92 @@ if not os.path.isdir(params.checkpoint_dir):
     os.makedirs(params.checkpoint_dir)
 params.checkpoint_dir = '%scheckpoints/%s/%s_%s' % (configs.save_dir, params.dataset, params.model, params.method)
 
-bb               = backbone.Conv3().cuda()
-simple_net       = backbone.simple_net().cuda()
-simple_net_multi = backbone.simple_net_multi_output().cuda()
+provider = data_provider(params.dataset)
 
-combined_network       = backbone.CombinedNetwork(bb, simple_net).cuda()
-combined_network_multi = backbone.CombinedNetwork(bb, simple_net_multi).cuda()
+if params.dataset == "QMUL":
+    if params.method == "DKT":
+        bb               = backbone.Conv3().cuda()
+        if params.model=="Conv3_net":
+            simple_net_multi = backbone.simple_net_multi_output()        
+            bb = backbone.CombinedNetwork(bb, simple_net_multi).cuda()
+    elif params.model == "Conv3" and params.method == "MAML":
+        backbone.Conv3.maml = True
+        backbone.simple_net.maml = True
+        bb               = backbone.Conv3().cuda()
+        bb               = backbone.CombinedNetwork(bb, backbone.simple_net()).cuda()  # nn.Linear(2916, 1)
+    elif params.model == "Conv3" and "UnLiMiTD" in params.method:
+        bb               = backbone.Conv3().cuda()
+        if not params.conv_net_not_differentiated: # Conv net is differentiated
+            bb               = backbone.CombinedNetwork(bb, backbone.simple_net()).cuda()  # nn.Linear(2916, 1)
+    else:
+        raise ValueError("Model not recognized")
+
+elif params.dataset in ("berkeley", "argus"):
+    
+    if params.dataset == "berkeley":
+        input_dim=11
+    else:
+        input_dim=3
+        
+    if params.model == "ThreeLayerMLP" and params.method in ("DKT"):
+        bb = backbone.ThreeLayerMLP(input_dim=input_dim, output_dim=32)
+    elif params.model == "ThreeLayerMLP" and params.method in ("MAML"):
+        backbone.ThreeLayerMLP.maml = True
+        bb = backbone.ThreeLayerMLP(input_dim=input_dim, output_dim=32)
+    elif params.model == "ThreeLayerMLP":
+        bb = backbone.ThreeLayerMLP(input_dim=input_dim, output_dim=1)
+    elif params.model == "SteinwartMLP" and params.method in ("DKT"):
+        bb = backbone.SteinwartMLP(input_dim=input_dim, output_dim=32)
+    elif params.model == "SteinwartMLP" and params.method in ("MAML"):
+        backbone.SteinwartMLP.maml = True
+        bb = backbone.SteinwartMLP(input_dim=input_dim, output_dim=32)
+    elif params.model == "SteinwartMLP":
+        bb = backbone.SteinwartMLP(input_dim=input_dim, output_dim=1)
+    else:
+        raise ValueError("Model not recognized")
+
+else:
+    raise ValueError("Dataset not recognized")
+    
+if params.method == "MAML":
+    if params.dataset=="QMUL":
+        n_support=9
+        n_task=8
+        train_lr=0.01
+        outer_lr=0.001
+        stop_epoch=n_task*100 # =800
+    elif params.dataset=="berkeley":
+        n_support=10
+        n_task=12
+        train_lr=1e-4
+        outer_lr=1e-4
+        stop_epoch=n_task*100 # =1200
+    elif params.dataset=="argus":
+        n_support=50
+        n_task=5
+        train_lr=1e-5
+        outer_lr=1e-5
+        stop_epoch=n_task*100 # =500
+    else:
+        raise ValueError("Dataset not recognized")
+        
 
 print(f"This is {params.method}, with {params.stop_epoch} epochs, and kernel {configs.kernel_type}")
 
 if params.method=='MAML':
-    backbone.ConvBlock.maml = True
-    backbone.SimpleBlock.maml = True
-    backbone.BottleneckBlock.maml = True
-    backbone.ResNet.maml = True
-    combined_network       = backbone.CombinedNetwork(bb, simple_net).cuda()
-    model = MAML(combined_network, n_support=9, approx=(params.method == 'maml_approx'), problem = "regression").cuda()
+    model = MAML(bb, n_support=n_support, approx=(params.method == 'maml_approx'), problem = "regression").cuda()
     optimizer = torch.optim.Adam([{'params': bb.parameters(), 'lr': 0.001}])
     for epoch in range(params.stop_epoch):
-        model.train_loop_regression(epoch, optimizer, nb_batch_of_batches = 16)
+        model.train_loop_regression(epoch, provider, optimizer)
+    params.checkpoint_dir += f"_{model.task_update_num}_inn_steps"
+    print(params.checkpoint_dir)
 
 if params.method=='DKT':
     model = DKT(bb).cuda()
     optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001},
                                 {'params': model.feature_extractor.parameters(), 'lr': 0.001}])
     for epoch in range(params.stop_epoch):
-        model.train_loop(epoch, optimizer)
+        model.train_loop(epoch, provider, optimizer)
         
 elif params.method=='transfer':
     model = FeatureTransfer(bb).cuda()
@@ -61,34 +123,24 @@ elif params.method=='transfer':
                                 {'params': model.feature_extractor.parameters(), 'lr': 0.001}])
     for epoch in range(params.stop_epoch):
         model.train_loop(epoch, optimizer)
-
-
-elif params.method=='DKT_w_net':
-    model = DKT(combined_network).cuda()
-    optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001},
-                                {'params': model.feature_extractor.parameters(), 'lr': 0.001}])
-    for epoch in range(params.stop_epoch):
-        model.train_loop(epoch, optimizer)
-        
-elif params.method=='DKT_w_net_multi':
-    model = DKT(combined_network_multi).cuda()
-    optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001},
-                                {'params': model.feature_extractor.parameters(), 'lr': 0.001}])
-    for epoch in range(params.stop_epoch):
-        model.train_loop(epoch, optimizer)
         
 elif params.method=='UnLiMiTDI':
-    model = UnLiMiTDI(bb, simple_net).cuda()
-    optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001},
-                                {'params': model.feature_extractor.parameters(), 'lr': 0.001}])
+    if params.conv_net_not_differentiated:
+        model = UnLiMiTDIX(bb, backbone.simple_net(), has_scaling_params=False).cuda()
+    else:
+        model = UnLiMiTDIX(None, bb, has_scaling_params=False).cuda()    
+    optimizer = torch.optim.Adam([{'params': model.parameters(), 'lr': 0.001}])
     for epoch in range(params.stop_epoch):
-        model.train_loop(epoch, optimizer)
+        model.train_loop(epoch, provider, optimizer)
         
-elif params.method=='UnLiMiTDI_w_conv_differentiated':
-    model = UnLiMiTDI(None, combined_network).cuda()
-    optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001}])
+elif params.method=='UnLiMiTDIX':
+    if params.conv_net_not_differentiated:
+        model = UnLiMiTDIX(bb, backbone.simple_net(), has_scaling_params=True).cuda()
+    else:
+        model = UnLiMiTDIX(None, bb, has_scaling_params=True).cuda()
+    optimizer = torch.optim.Adam([{'params': model.parameters(), 'lr': 0.001}, {'params': model.model.covar_module.scaling_params.values(), 'lr': 0.001}])
     for epoch in range(params.stop_epoch):
-        model.train_loop(epoch, optimizer)
+        model.train_loop(epoch, provider, optimizer)
 
 elif params.method=='UnLiMiTDR':
     input_dimension = sum(p.numel() for p in simple_net.parameters())
@@ -138,21 +190,6 @@ elif params.method=='UnLiMiTDF':
     model.load_checkpoint(params.checkpoint_dir)
     optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001},
                                 {'params': model.feature_extractor.parameters(), 'lr': 0.001}])
-    for epoch in range(params.stop_epoch//2):
-        model.train_loop(epoch, optimizer)
-
-elif params.method=='UnLiMiTDIX':
-    model = UnLiMiTDIX(bb, simple_net).cuda()
-    optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001},
-                                {'params': model.feature_extractor.parameters(), 'lr': 0.001}])
-    for epoch in range(params.stop_epoch):
-        model.train_loop(epoch, optimizer)
-        
-elif params.method=='UnLiMiTDIX_w_conv_differentiated':
-    model = UnLiMiTDIX(None, combined_network).cuda()
-    optimizer = torch.optim.Adam([{'params': model.model.parameters(), 'lr': 0.001}])
-    for epoch in range(params.stop_epoch):
-        model.train_loop(epoch, optimizer)
 
 elif params.method=='UnLiMiTDFX':
     print("Not Implemented YET")

@@ -35,8 +35,6 @@ except ImportError:
 # python3 train.py --dataset="CUB" --method="CDKT" --train_n_way=5 --test_n_way=5 --n_shot=1 --train_aug --tau=1 --loss='ELBO' --steps=2 --seed=1
 # python3 train.py --dataset="CUB" --method="CDKT" --train_n_way=5 --test_n_way=5 --n_shot=5 --train_aug --tau=1 --loss='ELBO' --steps=2 --seed=1
 
-sigma = 1
-
 class differentialCDKTIX(MetaTemplate):
     """
     This one has one conv network and one diff network per class. No network is shared between classes here.
@@ -52,18 +50,22 @@ class differentialCDKTIX(MetaTemplate):
         self.iteration = 0
         self.writer=None
         self.feature_extractor = self.feature
-        if type(diff_net)==backbone.CombinedNetwork:  #Transfering the net directly because simpler
-            self.diff_net = diff_net
-            dummy_z = torch.randn(1,3,84,84)
+        self.diff_net = diff_net()
+        dummy_z = torch.randn(1,3,84,84)
+        # else:
+        #     self.diff_net = diff_net()
+        #     dummy_z = torch.randn(1, 1600)  #Conv4 dummy_z
+        self.get_model_likelihood_mll() #Init model, likelihood, and mll
+        if(kernel_type=="cossim"):
+            self.normalize=True
+        elif(kernel_type=="bncossim"):
+            self.normalize=True
+            latent_size = np.prod(self.feature_extractor.final_feat_dim)
+            self.feature_extractor.trunk.add_module("bn_out", nn.BatchNorm1d(latent_size))
         else:
-            self.diff_net = diff_net()
-            dummy_z = torch.randn(1, 1600)  #Conv4 dummy_z
-        if self.diff_net(dummy_z).size(-1)==5:  #If output dimension of the network is 5, then we can use the model for 5 outputs with independant weights for kernels of each class
-            self.kernel_type = kernel_type
-        elif self.diff_net(dummy_z).size(-1)==1:
-            self.kernel_type = kernel_type + "_1o"
-        else:
-            raise ValueError("Output size not supported")
+            self.normalize=False
+        
+        self.kernel_type = kernel_type
         self.get_model_likelihood_mll() #Init model, likelihood
         print(self.kernel_type)
         self.normalize = True
@@ -236,11 +238,11 @@ class differentialCDKTIX(MetaTemplate):
             # print(f"output shape : {output.shape}")
             
             # Comment this for non specialized cdkt :
-            _, transformations = self.fiveoutputs_3rd_spe(z_batch = z_train, model = output)
-            sorted_z_train = z_train.clone()
-            for (rd_class, rd_elemt) in transformations.items():
-                z_train[(self.n_support + self.n_query)*rd_class:(self.n_support + self.n_query)*(rd_class+1)] = sorted_z_train[(self.n_support + self.n_query)*rd_elemt:(self.n_support + self.n_query)*(rd_elemt+1)]
-            output = self.model(z_train.reshape(z_train.size(0),-1))
+            # _, transformations = self.fiveoutputs_3rd_spe(z_batch = z_train, model = output)
+            # sorted_z_train = z_train.clone()
+            # for (rd_class, rd_elemt) in transformations.items():
+            #     z_train[(self.n_support + self.n_query)*rd_class:(self.n_support + self.n_query)*(rd_class+1)] = sorted_z_train[(self.n_support + self.n_query)*rd_elemt:(self.n_support + self.n_query)*(rd_elemt+1)]
+            # output = self.model(z_train.reshape(z_train.size(0),-1))
             
             lenghtscale = 0.0
             outputscales = []
@@ -264,19 +266,19 @@ class differentialCDKTIX(MetaTemplate):
                 loss = self.MeanFieldPredictiveLoglikelihood(y_train[:self.n_support * self.n_way], z_train[:self.n_support * self.n_way], y_train, z_train, steps=STEPS, REQUIRES_GRAD=False, times=1000, tau=self.TEMPERATURE)
 
             # Uncomment this line if want to add the condition of scalar product of scaling params for each class to be low : this add 50*sum <normalized_spi, normalized_spj> on all i<j to the loss
-            scaling_params = []
-            for single_model in self.model.kernels:
-                scaling_params.append(single_model.covar_module.base_kernel.sp)
-            scaling_params = torch.cat(scaling_params, dim=0)
+            # scaling_params = []
+            # for single_model in self.model.kernels:
+            #     scaling_params.append(single_model.covar_module.base_kernel.sp)
+            # scaling_params = torch.cat(scaling_params, dim=0)
             # print(f"scaling_params : {scaling_params}")
-            norm_scaling_params = F.normalize(scaling_params, p=2, dim=1)
+            # norm_scaling_params = F.normalize(scaling_params, p=2, dim=1)
             # print(norm_scaling_params.shape)
-            inner_prod_sp = norm_scaling_params @ norm_scaling_params.T
+            # inner_prod_sp = norm_scaling_params @ norm_scaling_params.T
             # print(f"Inner prod sp : {inner_prod_sp}")
-            upper_triangular = torch.triu(inner_prod_sp, diagonal=1)
+            # upper_triangular = torch.triu(inner_prod_sp, diagonal=1)
             # above_diagonal_elements = upper_triangular[upper_triangular != 0]
             # print(f"above_diagonal_elements : {above_diagonal_elements}")
-            average_sp = upper_triangular.mean()*2
+            # average_sp = upper_triangular.mean()*2
             # print(f"average_sp : {average_sp}")
             # loss += 50 * average_sp
             
@@ -355,11 +357,11 @@ class differentialCDKTIX(MetaTemplate):
             support_outputs = self.model(z_support.reshape(z_support.size(0),-1))
             
             # Comment this for non specialized cdkt :
-            _, transformations = self.fiveoutputs_3rd_spe(z_batch = z_support, model = support_outputs)
-            sorted_z_support = z_support.clone()
-            for (rd_class, rd_elemt) in transformations.items():
-                z_support[self.n_support*rd_class:self.n_support*(rd_class+1)] = sorted_z_support[self.n_support*rd_elemt:self.n_support*(rd_elemt+1)]
-            support_outputs = self.model(z_support.reshape(z_support.size(0), -1))
+            # _, transformations = self.fiveoutputs_3rd_spe(z_batch = z_support, model = support_outputs)
+            # sorted_z_support = z_support.clone()
+            # for (rd_class, rd_elemt) in transformations.items():
+            #     z_support[self.n_support*rd_class:self.n_support*(rd_class+1)] = sorted_z_support[self.n_support*rd_elemt:self.n_support*(rd_elemt+1)]
+            # support_outputs = self.model(z_support.reshape(z_support.size(0), -1))
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
@@ -369,9 +371,9 @@ class differentialCDKTIX(MetaTemplate):
             
             # Comment this for non specialized cdkt :
             # Sort z_query in the same way as z_support
-            sorted_z_query = z_query.clone()
-            for (rd_class, rd_elemt) in transformations.items():
-                z_query[self.n_query*rd_class:self.n_query*(rd_class+1)] = sorted_z_query[self.n_query*rd_elemt:self.n_query*(rd_elemt+1)]
+            # sorted_z_query = z_query.clone()
+            # for (rd_class, rd_elemt) in transformations.items():
+            #     z_query[self.n_query*rd_class:self.n_query*(rd_class+1)] = sorted_z_query[self.n_query*rd_elemt:self.n_query*(rd_elemt+1)]
             
             q_posterior_list = []
             for c in range(len(self.model.kernels)):
@@ -636,93 +638,38 @@ class differentialCDKTIX(MetaTemplate):
         return nn.CrossEntropyLoss()(logits.T, y_query)
 
 class NTKernel(gpytorch.kernels.Kernel):
-    def __init__(self, net, c, normalize, IX, **kwargs):  # i is the output index. Each index or the output has its own kernel that is sigma * grad(NN_i(x))^T @ grad(NN_i(x))
+    def __init__(self, net, scaling_params, c, normalize, **kwargs):  # i is the output index. Each index or the output has its own kernel that is sigma * grad(NN_i(x))^T @ grad(NN_i(x))
         super(NTKernel, self).__init__(**kwargs)
         self.net = net
+        self.params = {k: v for k, v in net.named_parameters()}
         self.c = c
+        self.init_f_net_single()
         self.normalize = normalize
-        
-        N = sum(p.numel() for p in net.parameters()) # Number of params in the network
-        self.N = N
-        if IX:
-            tensor = torch.zeros(1, N, device=self.device)
-            # Set elements at positions 5*index + c to 1
-            indices = [5 * i + c for i in range(N // 5 + 1) if 5 * i + c < N]
-            tensor[0, indices] = 1
-            
-            # Add N scaling parameters, initializing them as one
-            self.sp = nn.Parameter(tensor)
-        else:
-            self.sp = torch.ones(1, N, device=self.device)
+        self.scaling_params = scaling_params
 
+    def init_f_net_single(self):
+        self.zero_grad()
+        def fnet_single(params, x):
+            return functional_call(self.net, params, (x.unsqueeze(0),)).squeeze(0)
+        self.fnet_single = fnet_single
+        
     def forward(self, x1, x2, diag=False, **params):
-        #x1 = x1.reshape(x1.size(0), 3, 84, 84)
-        #x2 = x2.reshape(x2.size(0), 3, 84, 84)
-        if autodiff:
-            jac1T = self.compute_jacobian_autodiff(x1).T
-            jac2T = self.compute_jacobian_autodiff(x2).T if x1 is not x2 else jac1T
-        else:
-            jac1T = self.compute_jacobian(x1).T
-            jac2T = self.compute_jacobian(x2).T if x1 is not x2 else jac1T
-        if self.normalize :
-            jac1T_norm = jac1T.norm(dim=0, keepdim=True)
-            jac1T = jac1T/jac1T_norm
-            jac2T_norm = jac2T.norm(dim=0, keepdim=True)
-            jac2T = jac2T/jac2T_norm
-
-        result = jac1T.T@jac2T
+        x1 = x1.reshape(x1.size(0), 3, 84, 84)
+        x2 = x2.reshape(x2.size(0), 3, 84, 84)
         
+        self.zero_grad()
+        jac1 = vmap(jacrev(self.fnet_single), (None, 0))(self.params, x1)
+        jac1 = [(self.scaling_params[k] * j).flatten(2) for k, j in jac1.items()] 
+
+        jac2 = vmap(jacrev(self.fnet_single), (None, 0))(self.params, x2)
+        jac2 = [(self.scaling_params[k] * j).flatten(2) for k, j in jac2.items()] 
+
+        result = torch.stack([torch.einsum('Naf,Maf->NMa', j1, j2) for j1, j2 in zip(jac1, jac2)])
+        result = result.sum(0)
+        result = result[:, :, self.c]  # Only interested by the value of c'output
         if diag:
             return result.diag()
         return result
-    
-    def compute_jacobian(self, inputs):   # i is the class label, and corresponds to the output targeted
-        """
-        Return the jacobian of a batch of inputs, thanks to the vmap functionality
-        """
-        self.zero_grad()
-        params = {k: v for k, v in self.net.named_parameters()}
-
-        def fnet_single(params, x):
-            # Make sure output has the right dimensions
-            return functional_call(self.net, params, (x.unsqueeze(0),)).squeeze(0)[0]
-        
-        jac = vmap(jacrev(fnet_single), (None, 0))(params, inputs)
-        jac_values = jac.values()
-
-        reshaped_tensors = []
-        for j in jac_values:
-            if len(j.shape) >= 3:  # For layers with weights
-                # Flatten parameters dimensions and then reshape
-                flattened = j.flatten(start_dim=1)  # Flattens to [batch, params]
-                reshaped = flattened.T  # Transpose to align dimensions as [params, batch]
-                reshaped_tensors.append(reshaped)
-            elif len(j.shape) == 2:  # For biases or single parameter components
-                reshaped_tensors.append(j.T)  # Simply transpose
-
-        # Concatenate all the reshaped tensors into one large matrix
-        return torch.cat(reshaped_tensors, dim=0).T
-    
-    def compute_jacobian_autodiff(self, inputs):
-        """
-        Return the jacobian of a batch of inputs, using autodifferentiation
-        Useful for when dealing with models using batch normalization or other kind of running statistics
-        """
-        inputs.requires_grad_(True)
-        outputs = self.net(inputs)
-        N = sum(p.numel() for p in self.net.parameters())
-        jac = torch.empty(outputs.size(0), N).to("cuda:0")
-        for j in range(outputs.size(0)):
-            # print(j)
-            grad_y1 = torch.autograd.grad(outputs[j, self.c], self.net.parameters(), retain_graph=True, create_graph=True) # We need to create and retain every single graph for the gradient to be able to run through during backprop
-            # print_memory_usage()
-            flattened_tensors = [t.flatten() for t in grad_y1]
-            jac[j] = torch.cat(flattened_tensors)
-            # print_memory_usage()
-            # if device == "cuda":
-            #     torch.cuda.empty_cache()
-            #     print_memory_usage()
-        return jac
 
 
 class Kernel(nn.Module):
@@ -737,34 +684,8 @@ class Kernel(nn.Module):
         # self.mean_module = gpytorch.means.ConstantMean()
         self.mean_module = None
         
-        ## Linear kernel
-        if(kernel=='linear'):
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel())
-        ## RBF kernel
-        elif(kernel=='rbf' or kernel=='RBF'):
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
-        ## Matern kernel
-        elif(kernel=='matern'):
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel())
-        ## Polynomial (p=1)
-        elif(kernel=='poli1'):
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.PolynomialKernel(power=1))
-        ## Polynomial (p=2)
-        elif(kernel=='poli2'):
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.PolynomialKernel(power=2))
-        elif(kernel=='cossim' or kernel=='bncossim'):
-        ## Cosine distance and BatchNorm Cosine distancec
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel())
-            self.covar_module.base_kernel.variance = 1.0
-            self.covar_module.base_kernel.raw_variance.requires_grad = False
-        #elif(kernel=='NTK'):    # Can be optimized in the case of 5 outputs because we create params that are not going to count (we have N scaling params for N/5 params that actually are used)
-        #     self.covar_module = gpytorch.kernels.ScaleKernel(NTKernel(net, c, normalize=False, IX=True))
-        #elif(kernel=='CosSimNTK'):    # Can be optimized in the case of 5 outputs because we create params that are not going to count (we have N scaling params for N/5 params that actually are used)
-        #     self.covar_module = gpytorch.kernels.ScaleKernel(NTKernel(net, c, normalize=True, IX=True))
-        elif(kernel=='NTK_1o'):
-             self.covar_module = gpytorch.kernels.ScaleKernel(NTKernel(net, c, normalize=False, IX=True))
-        elif(kernel=='CosSimNTK_1o'):
-             self.covar_module = gpytorch.kernels.ScaleKernel(NTKernel(net, c, normalize=True, IX=True))
+        if(kernel=='NTK'):
+             self.covar_module = gpytorch.kernels.ScaleKernel(NTKernel(net, scaling_params, c, normalize=False))
         else:
             raise ValueError("[ERROR] the kernel '" + str(kernel) + "' is not supported!")
         self.covar_module = self.covar_module.to(self.device)

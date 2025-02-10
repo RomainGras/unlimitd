@@ -12,7 +12,7 @@ import gpytorch
 from time import gmtime, strftime
 import random
 from statistics import mean
-from data.qmul_loader import get_batch, train_people, test_people
+# from data.data_loader import get_batch, train_people, test_people
 from configs import kernel_type
 
 class DKT(nn.Module):
@@ -23,8 +23,8 @@ class DKT(nn.Module):
         self.get_model_likelihood_mll() #Init model, likelihood, and mll
 
     def get_model_likelihood_mll(self, train_x=None, train_y=None):
-        if(train_x is None): train_x=torch.ones(19, 40).cuda()
-        if(train_y is None): train_y=torch.ones(19).cuda()
+        if(train_x is None): train_x=torch.ones(100, 32).cuda()   # QMUL (19, 2916), berkeley (30, 32), argus (100, 32), QMUL with net (19, 40)
+        if(train_y is None): train_y=torch.ones(100).cuda()
 
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
         model = ExactGPLayer(train_x=train_x, train_y=train_y, likelihood=likelihood, kernel=kernel_type)
@@ -42,8 +42,8 @@ class DKT(nn.Module):
     def set_forward_loss(self, x):
         pass
 
-    def train_loop(self, epoch, optimizer):
-        batch, batch_labels = get_batch(train_people)
+    def train_loop(self, epoch, provider, optimizer):
+        batch, batch_labels = provider.get_train_batch()
         batch, batch_labels = batch.cuda(), batch_labels.cuda()
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
@@ -64,22 +64,11 @@ class DKT(nn.Module):
                     self.model.likelihood.noise.item()
                 ))
 
-    def test_loop(self, n_support, optimizer=None): # no optimizer needed for GP
-        inputs, targets = get_batch(test_people)
-
-        support_ind = list(np.random.choice(list(range(19)), replace=False, size=n_support))
-        query_ind   = [i for i in range(19) if i not in support_ind]
-
-        x_all = inputs.cuda()
-        y_all = targets.cuda()
-
-        x_support = inputs[:,support_ind,:,:,:].cuda()
-        y_support = targets[:,support_ind].cuda()
-        x_query   = inputs[:,query_ind,:,:,:]
-        y_query   = targets[:,query_ind].cuda()
-
+    def test_loop(self, n_support, provider, optimizer=None): # no optimizer needed for GP
+        (x_support, y_support), (x_query, y_query) = provider.get_test_batch()
+        
         # choose a random test person
-        n = np.random.randint(0, len(test_people)-1)
+        n = np.random.randint(0, x_support.size(0)-1)
         
         z_support = self.feature_extractor(x_support[n]).detach()
         self.model.set_train_data(inputs=z_support, targets=y_support[n], strict=False)
@@ -89,11 +78,11 @@ class DKT(nn.Module):
         self.likelihood.eval()
 
         with torch.no_grad():
-            z_query = self.feature_extractor(x_all[n]).detach()
+            z_query = self.feature_extractor(x_query[n]).detach()
             pred    = self.likelihood(self.model(z_query))
             lower, upper = pred.confidence_region() #2 standard deviations above and below the mean
 
-        mse = self.mse(pred.mean, y_all[n])
+        mse = self.mse(pred.mean, y_query[n])
 
         return mse
 
@@ -109,6 +98,10 @@ class DKT(nn.Module):
         if kernel_type != "linear":
             self.model.load_state_dict(ckpt['gp'])
         self.likelihood.load_state_dict(ckpt['likelihood'])
+        #ckpt_net = dict()
+        #for name, weight in ckpt['net'].items():
+        #    new_key = name.replace("0.layer", "0.conv")
+        #    ckpt_net[new_key] = weight
         self.feature_extractor.load_state_dict(ckpt['net'])
 
 class ExactGPLayer(gpytorch.models.ExactGP):

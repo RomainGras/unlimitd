@@ -16,14 +16,15 @@ from torch.func import functional_call, vmap, vjp, jvp, jacrev
 class MAML(MetaTemplate):
     def __init__(self, model_func,  n_way, n_support, approx = False):
         super(MAML, self).__init__( model_func,  n_way, n_support, change_way = False)
-
+        
+        print(self.feature.state_dict().keys())
         self.loss_fn = nn.CrossEntropyLoss()
-        self.classifier = backbone.Linear_fw(self.feat_dim, n_way)
+        self.classifier = backbone.Linear_fw(self.feat_dim, n_way)  # Or 2048
         self.classifier.bias.data.fill_(0)
         
         self.n_task     = 4
-        self.task_update_num = 5
-        self.train_lr = 0.01
+        self.task_update_num = 1  # 1
+        self.train_lr = 0.01  # 0.01
         print(f"Inner lr : {self.train_lr}")
         self.approx = approx #first order approx.        
 
@@ -74,60 +75,6 @@ class MAML(MetaTemplate):
 
         return loss
 
-    @torch.no_grad()
-    def fiveoutputs_3rd_spe(self, z_batch):
-        sorted_z_batch = torch.empty(z_batch.shape).cuda()
-        n_shot = z_batch.size(0)//self.n_way
-
-        # specialization matrix
-        spe = self.classifier(z_batch)
-        
-        reshape_spe = spe.view(self.n_way, n_shot, self.n_way)
-        # Compute the mean along the middle dimension
-        spe = reshape_spe.mean(dim=1)
-        
-        flattened_spe = spe.flatten()
-        transformations = dict()
-        for _ in range(self.n_way):
-            #Take the softmax of all the elements in the matrix
-            # print(flattened_spe.reshape(5,5))
-            with torch.no_grad():
-                softmax_matrix = F.softmax(flattened_spe, dim=0)
-            
-            if torch.isnan(softmax_matrix).any():
-                print("NaN found, skipping specialization")
-                return z_batch, {i: i for i in range(self.n_way)}
-
-            # print(softmax_matrix.reshape(5,5))
-            rd_element_idx = torch.multinomial(softmax_matrix, num_samples=1, replacement=True)
-            rd_class = rd_element_idx // self.n_way # Indice of the row
-            rd_elemt = rd_element_idx % self.n_way # Indice of the column
-            indices_1 = torch.tensor([self.n_way * i + rd_elemt for i in range(self.n_way)]).cuda()
-            indices_2 = torch.tensor([i + rd_class * self.n_way for i in range(self.n_way)]).cuda()
-
-            # Combine indices from both calculations, ensuring uniqueness if necessary
-            all_indices = torch.cat((indices_1, indices_2)).unique()
-            flattened_spe[all_indices] = float('-inf')
-            # print(f"Input number {rd_elemt[0]} will have class number {rd_class[0]}")
-            
-            transformations[rd_class] = rd_elemt
-            sorted_z_batch[n_shot*rd_class:n_shot*(rd_class+1)] = z_batch[n_shot*rd_elemt:n_shot*(rd_elemt+1)]
-        
-        # keys = torch.arange(self.n_way).tolist()  # For random transformations
-        # values = torch.randperm(self.n_way).tolist() 
-        return sorted_z_batch.cuda(), transformations # z_batch, {k: v for k, v in zip(keys, values)} 
-    
-    @torch.no_grad()
-    def random_shuffle(self):
-        # Generate the keys and values
-        keys = torch.arange(self.n_way)  # tensor([0, 1, 2, 3, 4])
-        values = torch.arange(self.n_way)  # tensor([0, 1, 2, 3, 4])
-
-        # Shuffle the values
-        values = values[torch.randperm(values.size(0))]
-
-        # Create the dictionary
-        return {int(k.item()): int(v.item()) for k, v in zip(keys, values)}
     
     def train_loop(self, epoch, train_loader, optimizer): #overwrite parrent function
         print_freq = 10
@@ -142,12 +89,12 @@ class MAML(MetaTemplate):
             assert self.n_way  ==  x.size(0), "MAML do not support way change"
             
             # Specialization :
-            x_support = x[:,:self.n_support,:,:,:].contiguous().view(self.n_way * (self.n_support), *x.size()[2:]).cuda()
-            z_batch = self.feature.forward(x_support)
-            _, transformations =  self.fiveoutputs_3rd_spe(z_batch)
-            sorted_x = x.clone()
-            for (rd_class, rd_elemt) in transformations.items():
-                x[rd_class:rd_class+1] = sorted_x[rd_elemt:rd_elemt+1]
+            # x_support = x[:,:self.n_support,:,:,:].contiguous().view(self.n_way * (self.n_support), *x.size()[2:]).cuda()
+            # z_batch = self.feature.forward(x_support)
+            # _, transformations =  self.fiveoutputs_3rd_spe(z_batch)
+            # sorted_x = x.clone()
+            # for (rd_class, rd_elemt) in transformations.items():
+                # x[rd_class:rd_class+1] = sorted_x[rd_elemt:rd_elemt+1]
                 
                 
             loss = self.set_forward_loss(x)
@@ -166,7 +113,8 @@ class MAML(MetaTemplate):
             optimizer.zero_grad()
             if i % print_freq==0:
                 print('Epoch {:d} | Batch {:d}/{:d} | Loss {:f}'.format(epoch, i, len(train_loader), avg_loss/float(i+1)))
-                      
+      
+    
     def test_loop(self, test_loader, return_std = False, jac_test = False): #overwrite parrent function
         correct =0
         count = 0
@@ -179,13 +127,13 @@ class MAML(MetaTemplate):
             assert self.n_way  ==  x.size(0), "MAML do not support way change"
            
             # Specialization :
-            x_support = x[:,:self.n_support,:,:,:].contiguous().view(self.n_way * (self.n_support), *x.size()[2:]).cuda()
-            z_batch = self.feature.forward(x_support)
-            _, transformations =  self.fiveoutputs_3rd_spe(z_batch)
+            # x_support = x[:,:self.n_support,:,:,:].contiguous().view(self.n_way * (self.n_support), *x.size()[2:]).cuda()
+            # z_batch = self.feature.forward(x_support)
+            # _, transformations =  self.fiveoutputs_3rd_spe(z_batch)
             #transformations = self.random_shuffle()
-            sorted_x = x.clone()
-            for (rd_class, rd_elemt) in transformations.items():
-                x[rd_class:rd_class+1] = sorted_x[rd_elemt:rd_elemt+1]
+            # sorted_x = x.clone()
+            # for (rd_class, rd_elemt) in transformations.items():
+                # x[rd_class:rd_class+1] = sorted_x[rd_elemt:rd_elemt+1]
             
             if jac_test:
                 correct_this, count_this = self.jac_correct(x)

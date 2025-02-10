@@ -1,0 +1,11 @@
+TODO 
+
+Voir dans quel contexte de batch norme ca marche le mieux
+
+Tenter la regularisation de s
+
+
+python maml_to_diffDKTIX.py --dataset="CUB" --method="maml" --train_n_way=5 --test_n_way=5 --stop_epoch=4 --n_shot=1 --seed=1 --train_aug --model="Conv4_maml_diffDKTIX"
+
+
+Compute difference in time between the two algorithms, in Meta-Testing

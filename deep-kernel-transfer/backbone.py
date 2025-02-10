@@ -65,8 +65,8 @@ class Linear_fw(nn.Linear): #used in MAML to forward input with fast weight
         return out
 
 class Conv2d_fw(nn.Conv2d): #used in MAML to forward input with fast weight
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,padding=0, bias = True):
-        super(Conv2d_fw, self).__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, bias = True):
+        super(Conv2d_fw, self).__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=bias)
         self.weight.fast = None
         if not self.bias is None:
             self.bias.fast = None
@@ -74,12 +74,12 @@ class Conv2d_fw(nn.Conv2d): #used in MAML to forward input with fast weight
     def forward(self, x):
         if self.bias is None:
             if self.weight.fast is not None:
-                out = F.conv2d(x, self.weight.fast, None, stride= self.stride, padding=self.padding)
+                out = F.conv2d(x, self.weight.fast, None, stride= self.stride, padding=self.padding, dilation=self.dilation)
             else:
                 out = super(Conv2d_fw, self).forward(x)
         else:
             if self.weight.fast is not None and self.bias.fast is not None:
-                out = F.conv2d(x, self.weight.fast, self.bias.fast, stride= self.stride, padding=self.padding)
+                out = F.conv2d(x, self.weight.fast, self.bias.fast, stride= self.stride, padding=self.padding, dilation=self.dilation)
             else:
                 out = super(Conv2d_fw, self).forward(x)
 
@@ -375,29 +375,41 @@ class ResNet(nn.Module):
         out = self.trunk(x)
         return out
 
+
+
+    
 # Backbone for QMUL regression
 class Conv3(nn.Module):
+    maml=False
     def __init__(self):
         super(Conv3, self).__init__()
-        self.layer1 = nn.Conv2d(3, 36, 3,stride=2,dilation=2)
-        self.layer2 = nn.Conv2d(36,36, 3,stride=2,dilation=2)
-        self.layer3 = nn.Conv2d(36,36, 3,stride=2,dilation=2)
+        if self.maml:
+            self.conv1 = Conv2d_fw(3, 36, 3,stride=2,dilation=2)
+            self.conv2 = Conv2d_fw(36,36, 3,stride=2,dilation=2)
+            self.conv3 = Conv2d_fw(36,36, 3,stride=2,dilation=2)
+            
+        else:
+            self.conv1 = nn.Conv2d(3, 36, 3,stride=2,dilation=2)
+            self.conv2 = nn.Conv2d(36,36, 3,stride=2,dilation=2)
+            self.conv3 = nn.Conv2d(36,36, 3,stride=2,dilation=2)
+        
+        self.feat_dim = 2916
 
     def return_clones(self):
-        layer1_w = self.layer1.weight.data.clone().detach()
-        layer2_w = self.layer2.weight.data.clone().detach()
-        layer3_w = self.layer3.weight.data.clone().detach()
+        layer1_w = self.conv1.weight.data.clone().detach()
+        layer2_w = self.conv2.weight.data.clone().detach()
+        layer3_w = self.conv3.weight.data.clone().detach()
         return [layer1_w, layer2_w, layer3_w]
 
     def assign_clones(self, weights_list):
-        self.layer1.weight.data.copy_(weights_list[0])
-        self.layer2.weight.data.copy_(weights_list[1])
-        self.layer3.weight.data.copy_(weights_list[2])
+        self.conv1.weight.data.copy_(weights_list[0])
+        self.conv2.weight.data.copy_(weights_list[1])
+        self.conv3.weight.data.copy_(weights_list[2])
 
     def forward(self, x):
-        out = F.relu(self.layer1(x))
-        out = F.relu(self.layer2(out))
-        out = F.relu(self.layer3(out))
+        out = F.relu(self.conv1.forward(x))
+        out = F.relu(self.conv2.forward(out))
+        out = F.relu(self.conv3.forward(out))
         out = out.view(out.size(0), -1)
         return out
 
@@ -439,11 +451,18 @@ def ResNet101( flatten = True):
 #===================
 
 class simple_net(nn.Module):
+    maml=False
     def __init__(self):
         super(simple_net, self).__init__()
-        self.layer1 = nn.Linear(2916, 40)
-        self.layer2 = nn.Linear(40,40)
-        self.layer3 = nn.Linear(40,1)
+        if self.maml:
+            self.layer1 = Linear_fw(2916, 40)
+            self.layer2 = Linear_fw(40, 40)
+            self.layer3 = Linear_fw(40, 1)
+        else:
+            self.layer1 = nn.Linear(2916, 40)
+            self.layer2 = nn.Linear(40,40)
+            self.layer3 = nn.Linear(40,1)
+        self.feat_dim=1
         
     def forward(self, x):
         out = F.relu(self.layer1(x))
@@ -457,12 +476,11 @@ class simple_net_multi_output(nn.Module):
         super(simple_net_multi_output, self).__init__()
         self.layer1 = nn.Linear(2916, 40)
         self.layer2 = nn.Linear(40,40)
-        self.layer3 = nn.Linear(40,40)
+        self.feat_dim=40
         
     def forward(self, x):
         out = F.relu(self.layer1(x))
-        out = F.relu(self.layer2(out))
-        out = self.layer3(out)
+        out = self.layer2(out)
         return out
 
 
@@ -474,6 +492,158 @@ class CombinedNetwork(nn.Module):
             net1,
             net2
         )
+        self.feat_dim = net2.feat_dim
     
     def forward(self, x):
         return self.networks(x)
+    
+    
+#========================
+# MLPs
+#========================
+
+class ThreeLayerMLP(nn.Module):
+    maml = False
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        if self.maml:
+            self.hidden1 = Linear_fw(input_dim, 32)
+            self.hidden2 = Linear_fw(32, 32)
+            self.hidden3 = Linear_fw(32, 32)
+            self.output = Linear_fw(32, output_dim)
+        else:
+            self.hidden1 = nn.Linear(input_dim, 32)
+            self.hidden2 = nn.Linear(32, 32)
+            self.hidden3 = nn.Linear(32, 32)
+            self.output = nn.Linear(32, output_dim)
+        
+        self.feat_dim = output_dim
+
+    def forward(self, x):
+        x = F.relu(self.hidden1(x))
+        x = F.relu(self.hidden2(x))
+        x = F.relu(self.hidden3(x))
+
+        x = self.output(x)
+        return x
+    
+
+class SimpleMLP(nn.Module):
+    """
+    Simple 3-layer MLP with 32 hidden units each, ReLU activations, and default pytorch layer initialization
+    """
+    def __init__(self, input_dim, output_dim, hidden_size=32):
+        super().__init__()
+        
+        self.layer1 = nn.Linear(input_dim, hidden_size)
+        self.layer2 = nn.Linear(hidden_size, hidden_size)
+        self.layer3 = nn.Linear(hidden_size, hidden_size)
+        self.output = nn.Linear(hidden_size, output_dim)
+        
+        self.relu = nn.ReLU()
+    
+    def return_clones(self):
+        layer1_w = self.layer1.weight.data.clone().detach()
+        layer2_w = self.layer2.weight.data.clone().detach()
+        layer3_w = self.layer3.weight.data.clone().detach()
+        output_w = self.output.weight.data.clone().detach()
+        return [layer1_w, layer2_w, layer3_w, output_w]
+
+    def assign_clones(self, weights_list):
+        self.layer1.weight.data.copy_(weights_list[0])
+        self.layer2.weight.data.copy_(weights_list[1])
+        self.layer3.weight.data.copy_(weights_list[2])
+        self.output.weight.data.copy_(weights_list[3])
+        
+    def forward(self, x):
+        x = self.relu(self.layer1(x))
+        x = self.relu(self.layer2(x))
+        x = self.relu(self.layer3(x))
+        return self.output(x)
+        
+        
+
+class SteinwartMLP(nn.Module):
+    """
+    3-layer MLP with 32 hidden units each, Leaky ReLU activations,
+    He (Kaiming) initialization for weights, and a simplified Steinwart (2019) initialization for biases.
+    """
+    maml=False
+    def __init__(self, input_dim, output_dim, hidden_size=32, leaky_relu_negative_slope=0.01):
+        super().__init__()
+        if self.maml:
+            self.hidden1 = Linear_fw(input_dim, hidden_size)
+            self.hidden2 = Linear_fw(hidden_size, hidden_size)
+            self.hidden3 = Linear_fw(hidden_size, hidden_size)
+            self.output = Linear_fw(hidden_size, output_dim)
+        else:
+            self.hidden1 = nn.Linear(input_dim, hidden_size)
+            self.hidden2 = nn.Linear(hidden_size, hidden_size)
+            self.hidden3 = nn.Linear(hidden_size, hidden_size)
+            self.output = nn.Linear(hidden_size, output_dim)
+
+        self.leaky_relu = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
+        
+        self.feat_dim = output_dim
+        
+        
+        # Initialize weights and biases
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        """
+        Applies:
+          - He (Kaiming) initialization for the weight tensors.
+          - Steinwart-style bias initialization:
+              bias_i = - <w_i, x*_i>,
+            where w_i is a normalized random vector, and x*_i is sampled from an assumed domain.
+        """
+        # Domain boundaries for Steinwart bias initialization (adjust if needed)
+        min_val = -1.0
+        max_val =  1.0
+
+        def steinwart_bias_init(layer: nn.Linear):
+            """
+            Computes a bias = - <w_i, x*_i>, where:
+              - w_i is a normalized random vector (per output neuron).
+              - x*_i is sampled uniformly in [min_val, max_val]^in_features.
+            """
+            out_features, in_features = layer.weight.shape
+
+            # Sample random vectors w_i in R^{in_features} and normalize to unit sphere
+            w = torch.randn(out_features, in_features)
+            w = w / (w.norm(dim=1, keepdim=True) + 1e-8)  # Avoid division by zero
+
+            # Sample x*_i uniformly
+            x_star = min_val + (max_val - min_val) * torch.rand_like(w)
+
+            # bias_i = - <w_i, x*_i>
+            b = -(w * x_star).sum(dim=1)
+
+            with torch.no_grad():
+                layer.bias.copy_(b)
+
+        # Apply to each layer
+        for layer in [self.hidden1, self.hidden2, self.hidden3, self.output]:
+            # He (Kaiming) initialization for weights (suitable for Leaky ReLU)
+            nn.init.kaiming_normal_(layer.weight, a=0.01)  # a = negative slope of LeakyReLU
+
+            # Steinwart bias initialization
+            steinwart_bias_init(layer)
+
+    def forward(self, x):
+        # Pass through 3 hidden layers with Leaky ReLU
+        x = self.leaky_relu(self.hidden1(x))
+        x = self.leaky_relu(self.hidden2(x))
+        x = self.leaky_relu(self.hidden3(x))
+
+        # Output layer (no activation by default)
+        return self.output(x)
+
+
+if __name__ == "__main__":
+    # Example usage
+    model = SteinwartInitMLP(input_dim=10, output_dim=1)
+    example_input = torch.randn(4, 10)  # batch of size 4, dimension 10
+    output = model(example_input)
+    print("Output shape:", output.shape)

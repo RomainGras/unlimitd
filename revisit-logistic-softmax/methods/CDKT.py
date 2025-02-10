@@ -313,17 +313,17 @@ class CDKT(MetaTemplate):
             support_outputs = self.model(z_support)
             
             # Comment this for non specialized cdkt :
-            _, transformations = self.fiveoutputs_3rd_spe(z_batch = z_support, model = support_outputs)
-            sorted_z_support = z_support.clone()
+            # _, transformations = self.fiveoutputs_3rd_spe(z_batch = z_support, model = support_outputs)
+            # sorted_z_support = z_support.clone()
             # print(f"z_support shape : {z_support.shape}")
             # print(f"n_support : {self.n_support}")
-            for (rd_class, rd_elemt) in transformations.items():
+            # for (rd_class, rd_elemt) in transformations.items():
                 # print(f"support rd_class : {rd_class}")
                 # print(f"z_support range : [{self.n_support*rd_class}, {self.n_support*(rd_class+1)}]")
                 # print(f"support rd_elemt : {rd_elemt}")
                 # print(f"sorted_z_support range : [{self.n_support*rd_elemt}, {self.n_support*(rd_elemt+1)}]")
-                z_support[self.n_support*rd_class:self.n_support*(rd_class+1)] = sorted_z_support[self.n_support*rd_elemt:self.n_support*(rd_elemt+1)]
-            support_outputs = self.model(z_support)
+                # z_support[self.n_support*rd_class:self.n_support*(rd_class+1)] = sorted_z_support[self.n_support*rd_elemt:self.n_support*(rd_elemt+1)]
+            # support_outputs = self.model(z_support)
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
@@ -333,15 +333,15 @@ class CDKT(MetaTemplate):
             
             # Comment this for non specialized cdkt :
             # Sort z_query in the same way as z_support
-            sorted_z_query = z_query.clone()
+            # sorted_z_query = z_query.clone()
             # print(f"z_query shape : {z_query.shape}")
             # print(f"n_query : {self.n_query}")
-            for (rd_class, rd_elemt) in transformations.items():
+            # for (rd_class, rd_elemt) in transformations.items():
                 # print(f"query rd_class : {rd_class}")
                 # print(f"z_query range : [{self.n_query*rd_class}, {self.n_query*(rd_class+1)}]")
                 # print(f"query rd_elemt : {rd_elemt}")
                 # print(f"sorted_z_query range : [{self.n_query*rd_elemt}, {self.n_query*(rd_elemt+1)}]")
-                z_query[self.n_query*rd_class:self.n_query*(rd_class+1)] = sorted_z_query[self.n_query*rd_elemt:self.n_query*(rd_elemt+1)]
+                # z_query[self.n_query*rd_class:self.n_query*(rd_class+1)] = sorted_z_query[self.n_query*rd_elemt:self.n_query*(rd_elemt+1)]
             
             q_posterior_list = []
             for c in range(len(self.model.kernels)):
