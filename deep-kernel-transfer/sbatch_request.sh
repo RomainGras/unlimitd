@@ -21,7 +21,7 @@ module load anaconda/2023a-pytorch
 # python train_regression.py --method="UnLiMiTDI_w_conv_differentiated" --stop_epoch=100 --seed=1
 # python test_regression.py  --method="UnLiMiTDI_w_conv_differentiated" --seed=1
 
-python train_regression.py --method="DKT" --stop_epoch=100 --seed=1 --model="Conv3_net"
+python train_regression.py --method="DKT" --stop_epoch=100 --seed=1 --model="Conv3"
 python test_regression.py  --method="DKT" --seed=1 --model="Conv3_net"
 
 # python train_regression.py --method="DKT_w_net" --stop_epoch=600 --seed=1
@@ -39,26 +39,26 @@ python test_regression.py  --method="DKT" --seed=1 --model="Conv3_net"
 # python train_regression.py --method="UnLiMiTDFX_w_conv_differentiated" --stop_epoch=600 --seed=1
 # python test_regression.py --method="UnLiMiTDFX_w_conv_differentiated" --seed=1 
 
-python train_regression.py --method="DKT" --stop_epoch=100 --dataset="argus" --model="ThreeLayerMLP" --seed=1
-python test_regression.py  --method="DKT" --dataset="argus" --model="ThreeLayerMLP" --seed=1
+python train_regression.py --method="DKT" --stop_epoch=100 --dataset="berkeley" --model="ThreeLayerMLP" --seed=1
+python test_regression.py  --method="DKT" --dataset="berkeley" --model="ThreeLayerMLP" --seed=1
 
-python train_regression.py --method="UnLiMiTDIX" --dataset="argus" --model="ThreeLayerMLP" --stop_epoch=100 --seed=1
-python test_regression.py --method="UnLiMiTDIX" --dataset="argus" --model="ThreeLayerMLP" --seed=1
+python train_regression.py --method="UnLiMiTDI" --stop_epoch=100 --seed=1 --dataset="argus" --model="ThreeLayerMLP"
+python test_regression.py --method="UnLiMiTDI"  --seed=1 --dataset="argus" --model="ThreeLayerMLP"
 
 
-python train_regression.py --method="UnLiMiTDIX" --stop_epoch=100 --seed=1 --dataset="berkeley" --model="ThreeLayerMLP"
-python test_regression.py --method="UnLiMiTDIX" --seed=1 --dataset="berkeley" --model="ThreeLayerMLP"
-python test_regression.py --method="UnLiMiTDI" --seed=1 --ft
+python train_regression.py --method="UnLiMiTDF" --stop_epoch=100 --seed=1
+python test_regression.py --method="UnLiMiTDF" --seed=1
+python test_regression.py --method="UnLiMiTDI" --seed=1 --ft --dataset="argus" --model="ThreeLayerMLP"
 
-python train_regression.py --method="UnLiMiTDIX" --stop_epoch=100 --seed=1
-python test_regression.py --method="UnLiMiTDIX" --seed=1
-python test_regression.py --method="UnLiMiTDIX" --seed=1 --ft=True --task_update_num=50
+python train_regression.py --method="unlimitedX++" --stop_epoch=500 --seed=1
+python test_regression.py --method="unlimitedX++" --seed=1
+python test_regression.py --method="UnLiMiTDIX" --seed=1 --ft --task_update_num=1000
 
 python train_regression.py --method="UnLiMiTDI" --stop_epoch=100 --seed=1
 python test_regression.py --method="UnLiMiTDI" --seed=1
-python test_regression.py --method="UnLiMiTDI" --seed=1 --ft=True --task_update_num=50
+python test_regression.py --method="UnLiMiTDI" --seed=1 --ft --task_update_num=50
 
 python train_regression.py --method="MAML" --stop_epoch=800 --seed=1
 
 python train_regression.py --method="MAML" --stop_epoch=500 --seed=1 --dataset="argus" --model="ThreeLayerMLP"
-python test_regression.py --method="MAML" --task_update_num=50 --dataset="argus" --model="ThreeLayerMLP"
+python test_regression.py --method="MAML" --task_update_num=50 --seed=1 --dataset="argus" --model="ThreeLayerMLP"

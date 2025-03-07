@@ -24,11 +24,12 @@ class MAML(MetaTemplate):
             self.last_layer = backbone.Linear_fw(self.feature.feat_dim, n_way)
             self.last_layer.bias.data.fill_(0)
         else:
+            print("test")
             self.last_layer = nn.Identity()
         
-        self.n_task     = 8
+        self.n_task     = 5
         self.task_update_num = 3
-        self.train_lr = 0.01
+        self.train_lr = 1e-5
         self.approx = approx #first order approx.        
 
     def forward(self,x):

@@ -16,24 +16,23 @@ from statistics import mean
 from data.qmul_loader import get_batch, train_people, test_people
 from configs import kernel_type
 
-class UnLiMiTDR(nn.Module):
-    def __init__(self, conv_net, diff_net, subspace_dimension):
-        super(UnLiMiTDR, self).__init__()
+class UnLiMiTD(nn.Module):
+    def __init__(self, conv_net, diff_net, P):
+        super(UnLiMiTDproj, self).__init__()
         ## GP parameters
         self.feature_extractor = conv_net
         self.diff_net = diff_net  #Differentiable network
         
-        input_dimension = sum(p.numel() for p in diff_net.parameters())
-        self.subspace_dimension = subspace_dimension
-        self.P = create_projection_matrix(input_dimension, subspace_dimension).cuda()
+        self.P = P
+        self.mean = nn.Parameter(torch.randn(1))
         self.get_model_likelihood_mll() #Init model, likelihood, and mll
 
     def get_model_likelihood_mll(self, train_x=None, train_y=None):
-        if(train_x is None): train_x=torch.ones(19, 2916).cuda()
+        if(train_x is None): train_x=torch.ones(19, 30000).cuda()
         if(train_y is None): train_y=torch.ones(19).cuda()
 
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
-        model = ExactGPLayer(train_x=train_x, train_y=train_y, likelihood=likelihood, diff_net = self.diff_net, kernel=kernel_type, subspace_dimension = self.subspace_dimension, P = self.P)
+        model = ExactGPLayer(train_x=train_x, train_y=train_y, likelihood=likelihood, diff_net = self.diff_net, P = self.P, kernel=kernel_type)
 
         self.model      = model.cuda()
         self.likelihood = likelihood.cuda()
@@ -48,56 +47,52 @@ class UnLiMiTDR(nn.Module):
     def set_forward_loss(self, x):
         pass
 
-    def train_loop(self, epoch, optimizer):
-        batch, batch_labels = get_batch(train_people)
-        batch, batch_labels = batch.cuda(), batch_labels.cuda()
+    def train_loop(self, epoch, provider, optimizer):
+        batch, batch_labels = provider.get_train_batch()
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
 
-            inputs_conv = self.feature_extractor(inputs)
-            self.model.set_train_data(inputs=inputs_conv, targets=labels - self.diff_net(inputs_conv).reshape(-1))  
-            predictions = self.model(inputs_conv)
+            inputs_conv = self.feature_extractor(inputs)  #If convolution is not differentiated, else, it's just identity
+            
+            inputs_conv_flat = inputs_conv.view(inputs_conv.size(0), -1)
+            self.model.set_train_data(inputs=inputs_conv_flat, targets=labels - self.mean) 
+            predictions = self.model(inputs_conv_flat)
             loss = -self.mll(predictions, self.model.train_targets)
 
             loss.backward()
             optimizer.step()
-            mse = self.mse(predictions.mean, labels)
-
+            
             if (epoch%10==0):
+                mse = self.mse(predictions.mean, labels)
                 print('[%d] - Loss: %.3f  MSE: %.3f noise: %.3f' % (
                     epoch, loss.item(), mse.item(),
                     self.model.likelihood.noise.item()
                 ))
 
-    def test_loop(self, n_support, optimizer=None): # no optimizer needed for GP
-        inputs, targets = get_batch(test_people)
-
-        support_ind = list(np.random.choice(list(range(19)), replace=False, size=n_support))
-        query_ind   = [i for i in range(19) if i not in support_ind]
-
-        x_all = inputs.cuda()
-        y_all = targets.cuda()
-
-        x_support = inputs[:,support_ind,:,:,:].cuda()
-        y_support = targets[:,support_ind].cuda()
-
+    def test_loop(self, n_support, provider, optimizer=None): # no optimizer needed for GP
+        (x_support, y_support), (x_query, y_query) = provider.get_test_batch()
+        
         # choose a random test person
-        n = np.random.randint(0, len(test_people)-1)
+        n = np.random.randint(0, x_support.size(0)-1)
     
         x_conv_support = self.feature_extractor(x_support[n]).detach()
-        self.model.set_train_data(inputs=x_conv_support, targets=y_support[n] - self.diff_net(x_conv_support).reshape(-1), strict=False)
+        x_conv_support_flat = x_conv_support.view(x_conv_support.size(0), -1)
+        
+        x_conv_query = self.feature_extractor(x_query[n]).detach()
+        x_conv_query_flat = x_conv_query.view(x_conv_query.size(0), -1)
+            
+        self.model.set_train_data(inputs=x_conv_support_flat, targets=y_support[n] - self.mean, strict=False)
 
         self.model.eval()
         self.feature_extractor.eval()
         self.likelihood.eval()
 
         with torch.no_grad():
-            x_conv_query = self.feature_extractor(x_all[n]).detach()
-            pred    = self.likelihood(self.model(x_conv_query))
+            pred    = self.likelihood(self.model(x_conv_query_flat))
             lower, upper = pred.confidence_region() #2 standard deviations above and below the mean
-            lower += self.diff_net(x_conv_query).reshape(-1)
-            upper += self.diff_net(x_conv_query).reshape(-1)
-        mse = self.mse(pred.mean + self.diff_net(self.feature_extractor(x_all[n])).reshape(-1), y_all[n])
+            lower += self.mean
+            upper += self.mean
+        mse = self.mse(pred.mean + self.mean, y_query[n])
 
         return mse
 
@@ -107,14 +102,24 @@ class UnLiMiTDR(nn.Module):
         likelihood_state_dict = self.likelihood.state_dict()
         conv_net_state_dict   = self.feature_extractor.state_dict()
         diff_net_state_dict   = self.diff_net.state_dict()
-        torch.save({'gp': gp_state_dict, 'likelihood': likelihood_state_dict, 'conv_net':conv_net_state_dict, 'diff_net':diff_net_state_dict}, checkpoint)
+        torch.save({
+            'gp': gp_state_dict,
+            'likelihood': likelihood_state_dict,
+            'conv_net': conv_net_state_dict,
+            'diff_net': diff_net_state_dict,
+            'proj_matrix': self.P  # Save the tensor directly
+        }, checkpoint)
 
     def load_checkpoint(self, checkpoint):
         ckpt = torch.load(checkpoint)
+        if 'covar_module.scaling_param' not in ckpt['gp'].keys():
+            ckpt['gp']['covar_module.scaling_param'] = torch.ones(self.P.shape[0]).cuda()
         self.model.load_state_dict(ckpt['gp'])
         self.likelihood.load_state_dict(ckpt['likelihood'])
         self.feature_extractor.load_state_dict(ckpt['conv_net'])
         self.diff_net.load_state_dict(ckpt['diff_net'])
+        if 'proj_matrix' in ckpt.keys() and ckpt['proj_matrix'] is not None:
+            self.P = ckpt['proj_matrix']
 
 
 # ##################
@@ -122,22 +127,28 @@ class UnLiMiTDR(nn.Module):
 # ##################
 
 class NTKernel_proj(gpytorch.kernels.Kernel):
-    def __init__(self, net, P, subspace_dimension, **kwargs):
+    def __init__(self, net, P, **kwargs):
         super(NTKernel_proj, self).__init__(**kwargs)
         self.net = net
         
-        self.sub_dim = subspace_dimension
         self.P = P # Projection matrix
         
-        # Add 10 scaling parameters, initializing them as one
-        self.scaling_param = nn.Parameter(torch.ones(subspace_dimension))
+        if P is not None:
+            # Add subspace_dimension scaling parameters, initializing them as one
+            self.scaling_param = nn.Parameter(torch.ones(P.shape[0]))
         
     def forward(self, x1, x2, diag=False, **params):
+        x1 = x1.reshape(x1.size(0), 3, 100, 100)
+        x2 = x2.reshape(x2.size(0), 3, 100, 100)
+        
         jac1 = self.compute_jacobian(x1)
         jac2 = self.compute_jacobian(x2) if x1 is not x2 else jac1
-        D = torch.diag(torch.pow(self.scaling_param, 2))
         
-        result = torch.chain_matmul(jac1.T, self.P.T, D, self.P, jac2)
+        if P is not None:
+            D = torch.diag(torch.pow(self.scaling_param, 2))
+            result = torch.chain_matmul(jac1, self.P.T, D, self.P, jac2.T)
+        else:
+            result = jac1 @ jac2.T
         
         if diag:
             return result.diag()
@@ -161,22 +172,22 @@ class NTKernel_proj(gpytorch.kernels.Kernel):
                 .reshape(-1, j.shape[0] * j.shape[1])  # Reshape to (c, a*b) using dynamic sizing
             for j in jac
         ]
-        return torch.cat(reshaped_tensors, dim=0)
-
-    
+        return torch.cat(reshaped_tensors, dim=0).T
 
 
+# ##################
+# GP layer
+# ##################
 class ExactGPLayer(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, likelihood, diff_net, subspace_dimension, P, kernel='NTK'):
+    def __init__(self, train_x, train_y, likelihood, diff_net, P, kernel='NTK'):
         super(ExactGPLayer, self).__init__(train_x, train_y, likelihood)
         self.mean_module  = gpytorch.means.ConstantMean()
 
         ## NTKernel
         if(kernel=='NTK'):
-            self.covar_module = NTKernel_proj(diff_net, P, subspace_dimension)
-        elif(kernel=='cossim' or kernel=='bncossim'):
-            # NOT IMPLEMENTED
-            raise ValueError("NOT IMPLEMENTED")            
+            self.covar_module = NTKernel_proj(diff_net, P)
+        elif(kernel=='NTKcossim'):
+            self.covar_module = CosSimNTKernel_proj(diff_net, P)  
         else:
             raise ValueError("[ERROR] the kernel '" + str(kernel) + "' is not supported for regression, use 'rbf' or 'spectral'.")
 
@@ -185,27 +196,3 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-
-def create_projection_matrix(n, subspace_dimension):
-    """
-    Create a projection matrix from R^n to a subspace of dimension `subspace_dimension`.
-    
-    Args:
-    n (int): Dimension of the original space.
-    subspace_dimension (int): Dimension of the target subspace.
-
-    Returns:
-    torch.Tensor: A (n x subspace_dimension) projection matrix.
-    """
-    # Check if subspace_dimension is not greater than n
-    if subspace_dimension > n:
-        raise ValueError("subspace_dimension must be less than or equal to n")
-
-    # Generate a random n x subspace_dimension matrix
-    random_matrix = torch.randn(n, subspace_dimension)
-
-    # Perform QR decomposition to orthonormalize the columns
-    q, _ = torch.linalg.qr(random_matrix)
-
-    # Return the first 'subspace_dimension' columns of Q, which form an orthonormal basis
-    return q[:, :subspace_dimension].T

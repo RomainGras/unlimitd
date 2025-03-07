@@ -10,11 +10,8 @@ from io_utils import parse_args_regression, get_resume_file
 from methods.maml import MAML
 from methods.DKT_regression import DKT
 from methods.feature_transfer_regression import FeatureTransfer
-from methods.UnLiMiTDI_regression import UnLiMiTDI
-from methods.UnLiMiTDR_regression import UnLiMiTDR
-from methods.UnLiMiTDproj_regression import UnLiMiTDproj
-from methods.UnLiMiTDIX_regression import UnLiMiTDIX
-from methods.UnLiMiTDprojX_regression import UnLiMiTDprojX
+from methods.UnLiMiTD_regression import UnLiMiTD
+from methods.unlimited_plus_regression import unlimited_plus
 import backbone
 import numpy as np
 import os
@@ -39,7 +36,7 @@ if params.dataset == "QMUL":
         backbone.simple_net.maml = True
         bb               = backbone.Conv3().cuda()
         bb               = backbone.CombinedNetwork(bb, backbone.simple_net()).cuda()  # nn.Linear(2916, 1)
-    elif params.model == "Conv3" and "UnLiMiTD" in params.method:
+    elif params.model == "Conv3" and "unlimit" in params.method.lower():
         bb               = backbone.Conv3().cuda()
         if not params.conv_net_not_differentiated: # Conv net is differentiated
             bb               = backbone.CombinedNetwork(bb, backbone.simple_net()).cuda()  # nn.Linear(2916, 1)
@@ -54,14 +51,22 @@ elif params.dataset in ("berkeley", "argus"):
         input_dim=3
         
     if params.model == "ThreeLayerMLP" and params.method in ("DKT"):
-        bb = backbone.ThreeLayerMLP(input_dim=input_dim, output_dim=32)
+        if params.dataset=="berkeley":
+            output_dim=15
+        else:
+            output_dim=32
+        bb = backbone.ThreeLayerMLP(input_dim=input_dim, output_dim=output_dim)
     elif params.model == "ThreeLayerMLP" and params.method in ("MAML"):
         backbone.ThreeLayerMLP.maml = True
         bb = backbone.ThreeLayerMLP(input_dim=input_dim, output_dim=32)
     elif params.model == "ThreeLayerMLP":
         bb = backbone.ThreeLayerMLP(input_dim=input_dim, output_dim=1)
     elif params.model == "SteinwartMLP" and params.method in ("DKT"):
-        bb = backbone.SteinwartMLP(input_dim=input_dim, output_dim=32)
+        if params.dataset=="berkeley":
+            output_dim=15
+        else:
+            output_dim=32
+        bb = backbone.SteinwartMLP(input_dim=input_dim, output_dim=output_dim)
     elif params.model == "SteinwartMLP" and params.method in ("MAML"):
         backbone.SteinwartMLP.maml = True
         bb = backbone.SteinwartMLP(input_dim=input_dim, output_dim=32)
@@ -106,6 +111,9 @@ def create_random_projection_matrix(n, subspace_dimension):
 if params.method=='DKT':
     model = DKT(bb).cuda()
     optimizer = None
+    params.checkpoint_dir += f"_{configs.kernel_type}"
+    print(params.checkpoint_dir)
+    
 elif params.method=='transfer':
     model = FeatureTransfer(bb).cuda()
     optimizer = optim.Adam([{'params':model.parameters(),'lr':0.001}])
@@ -122,11 +130,28 @@ elif params.method=='DKT_w_net':
 elif params.method=='DKT_w_net_multi':
     model = DKT(combined_network_multi).cuda()
     optimizer = None
+    
+elif params.method=='unlimitedI++':
+    if params.conv_net_not_differentiated:
+        model = unlimited_plus(bb, backbone.simple_net(), has_scaling_params=False).cuda()
+    else:
+        model = unlimited_plus(None, bb, has_scaling_params=False).cuda()    
+    params.checkpoint_dir += f"_{configs.kernel_type}"
+    optimizer = None
+elif params.method=='unlimitedX++':
+    if params.conv_net_not_differentiated:
+        model = unlimited_plus(bb, backbone.simple_net(), has_scaling_params=True).cuda()
+    else:
+        model = unlimited_plus(None, bb, has_scaling_params=True).cuda()
+    params.checkpoint_dir += f"_{configs.kernel_type}"
+    optimizer = None
+    
 elif params.method=='UnLiMiTDI':
     if params.conv_net_not_differentiated:
-        model = UnLiMiTDIX(bb, backbone.simple_net(), has_scaling_params=False).cuda()
+        model = unlimited_plus(bb, backbone.simple_net(), has_scaling_params=False, method=params.method).cuda()
     else:
-        model = UnLiMiTDIX(None, bb, has_scaling_params=False).cuda()    
+        model = unlimited_plus(None, bb, has_scaling_params=False, method=params.method).cuda()    
+    params.checkpoint_dir += f"_{configs.kernel_type}"
     optimizer = None
 elif params.method=='UnLiMiTDR':
     input_dimension = sum(p.numel() for p in simple_net.parameters())
@@ -135,16 +160,11 @@ elif params.method=='UnLiMiTDR':
     model = UnLiMiTDproj(bb, simple_net, P).cuda()
     optimizer = None
 elif params.method=='UnLiMiTDF':
-    input_dimension = sum(p.numel() for p in simple_net.parameters())
-    # Dummy projection matrix to initialize the model, replaced afterwards with model.load_checkpoint
-    P = create_random_projection_matrix(input_dimension, params.subspacedim).cuda()
-    model = UnLiMiTDproj(bb, simple_net, P).cuda()
-    optimizer = None
-elif params.method=='UnLiMiTDIX':
     if params.conv_net_not_differentiated:
-        model = UnLiMiTDIX(bb, backbone.simple_net(), has_scaling_params=True).cuda()
+        model = unlimited_plus(bb, backbone.simple_net(), has_scaling_params=True, method=params.method).cuda()
     else:
-        model = UnLiMiTDIX(None, bb, has_scaling_params=True).cuda()
+        model = unlimited_plus(None, bb, has_scaling_params=True, method=params.method).cuda() 
+    params.checkpoint_dir += f"_{configs.kernel_type}"
     optimizer = None
     
 elif params.method=='UnLiMiTDFX':

@@ -15,6 +15,9 @@ from statistics import mean
 # from data.data_loader import get_batch, train_people, test_people
 from configs import kernel_type
 
+# QMUL (19, 2916), berkeley (30, 32), argus (100, 32), QMUL with net (19, 40)
+batch_dim, feature_dim = 30, 15
+
 class DKT(nn.Module):
     def __init__(self, backbone):
         super(DKT, self).__init__()
@@ -23,13 +26,14 @@ class DKT(nn.Module):
         self.get_model_likelihood_mll() #Init model, likelihood, and mll
 
     def get_model_likelihood_mll(self, train_x=None, train_y=None):
-        if(train_x is None): train_x=torch.ones(100, 32).cuda()   # QMUL (19, 2916), berkeley (30, 32), argus (100, 32), QMUL with net (19, 40)
-        if(train_y is None): train_y=torch.ones(100).cuda()
+        if(train_x is None): train_x=torch.ones(batch_dim, feature_dim).cuda() 
+        if(train_y is None): train_y=torch.ones(batch_dim).cuda()
 
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
         model = ExactGPLayer(train_x=train_x, train_y=train_y, likelihood=likelihood, kernel=kernel_type)
+        # train_x, train_y = tasks.sample_task().sample_data(n_shot_train, noise=.1)
 
-        self.model      = model.cuda()
+        self.model      = model.cuda()            
         self.likelihood = likelihood.cuda()
         self.mll        = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model).cuda()
         self.mse        = nn.MSELoss()
@@ -45,18 +49,18 @@ class DKT(nn.Module):
     def train_loop(self, epoch, provider, optimizer):
         batch, batch_labels = provider.get_train_batch()
         batch, batch_labels = batch.cuda(), batch_labels.cuda()
-        for inputs, labels in zip(batch, batch_labels):
+        for X, Y in zip(batch, batch_labels):
             optimizer.zero_grad()
-            z = self.feature_extractor(inputs)
-
-            self.model.set_train_data(inputs=z, targets=labels)
+            z = self.feature_extractor(X)
+            
+            self.model.set_train_data(inputs=z, targets=Y)
             predictions = self.model(z)
             
             loss = -self.mll(predictions, self.model.train_targets)
 
             loss.backward()
             optimizer.step()
-            mse = self.mse(predictions.mean, labels)
+            mse = self.mse(predictions.mean, Y)
 
             if (epoch%10==0):
                 print('[%d] - Loss: %.3f  MSE: %.3f noise: %.3f' % (
@@ -114,7 +118,7 @@ class ExactGPLayer(gpytorch.models.ExactGP):
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
         ## Spectral kernel
         elif(kernel=='spectral'):
-            self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=40)
+            self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=feature_dim)
         elif(kernel=='linear'):
             self.covar_module = linear_kernel()
         else:

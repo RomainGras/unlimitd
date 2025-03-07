@@ -62,7 +62,7 @@ def parse_args_regression(script):
             parser.add_argument('--resume'      , action='store_true', help='continue from previous trained model with largest epoch')
         elif script == 'test_regression':
             parser.add_argument('--n_support', default=5, type=int, help='Number of points on trajectory to be given as support points')
-            parser.add_argument('--n_test_epochs', default=30, type=int, help='How many test people?')
+            parser.add_argument('--n_test_epochs', default=15, type=int, help='How many test people?')
             parser.add_argument('--ft', action='store_true', help='Fine-tuning adaptation for oursIX or oursI')
             parser.add_argument('--task_update_num', default=10, type=int, help='For MAML, number of fine-tuning steps')
         elif script == 'test_sigma_regression':
